@@ -1,0 +1,236 @@
+# BrainSpark - Infrastructure Setup Cloud Build
+# File: cloudbuild-setup.yaml
+#
+# Run this ONCE before first deployment to set up:
+# - Artifact Registry repository
+# - Secret Manager secrets
+# - Cloud SQL database
+# - VPC and connectors
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild-setup.yaml \
+#     --substitutions=_ANTHROPIC_API_KEY=sk-ant-xxx
+
+steps:
+  # ============================================================
+  # STEP 1: ENABLE REQUIRED APIS
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'enable-apis'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Enabling required GCP APIs..."
+        gcloud services enable \
+          run.googleapis.com \
+          sqladmin.googleapis.com \
+          redis.googleapis.com \
+          secretmanager.googleapis.com \
+          artifactregistry.googleapis.com \
+          cloudbuild.googleapis.com \
+          compute.googleapis.com \
+          vpcaccess.googleapis.com \
+          servicenetworking.googleapis.com
+        echo "✓ APIs enabled"
+
+  # ============================================================
+  # STEP 2: CREATE ARTIFACT REGISTRY
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-registry'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating Artifact Registry repository..."
+        gcloud artifacts repositories describe ${_REPO_NAME} \
+          --location=${_REGION} 2>/dev/null || \
+        gcloud artifacts repositories create ${_REPO_NAME} \
+          --repository-format=docker \
+          --location=${_REGION} \
+          --description="BrainSpark Docker images"
+        echo "✓ Artifact Registry ready"
+    waitFor: ['enable-apis']
+
+  # ============================================================
+  # STEP 3: CREATE SECRETS
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-secrets'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating secrets in Secret Manager..."
+
+        # Anthropic API Key
+        if ! gcloud secrets describe anthropic-api-key 2>/dev/null; then
+          echo "${_ANTHROPIC_API_KEY}" | gcloud secrets create anthropic-api-key --data-file=-
+          echo "✓ Created anthropic-api-key"
+        else
+          echo "- anthropic-api-key already exists"
+        fi
+
+        # JWT Secret (generate random)
+        if ! gcloud secrets describe jwt-secret 2>/dev/null; then
+          openssl rand -base64 64 | gcloud secrets create jwt-secret --data-file=-
+          echo "✓ Created jwt-secret"
+        else
+          echo "- jwt-secret already exists"
+        fi
+
+        # Database password placeholder (will be updated after DB creation)
+        if ! gcloud secrets describe db-password 2>/dev/null; then
+          openssl rand -base64 32 | gcloud secrets create db-password --data-file=-
+          echo "✓ Created db-password"
+        else
+          echo "- db-password already exists"
+        fi
+
+        echo "✓ Secrets configured"
+    waitFor: ['enable-apis']
+
+  # ============================================================
+  # STEP 4: CREATE VPC NETWORK
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-vpc'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up VPC network..."
+
+        # Create VPC
+        if ! gcloud compute networks describe brainspark-vpc 2>/dev/null; then
+          gcloud compute networks create brainspark-vpc \
+            --subnet-mode=custom
+          echo "✓ Created VPC"
+        else
+          echo "- VPC already exists"
+        fi
+
+        # Create subnet
+        if ! gcloud compute networks subnets describe brainspark-subnet --region=${_REGION} 2>/dev/null; then
+          gcloud compute networks subnets create brainspark-subnet \
+            --network=brainspark-vpc \
+            --region=${_REGION} \
+            --range=10.0.0.0/24 \
+            --enable-private-ip-google-access
+          echo "✓ Created subnet"
+        else
+          echo "- Subnet already exists"
+        fi
+
+        echo "✓ VPC configured"
+    waitFor: ['enable-apis']
+
+  # ============================================================
+  # STEP 5: CREATE VPC CONNECTOR
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-connector'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating VPC Access Connector..."
+
+        if ! gcloud compute networks vpc-access connectors describe brainspark-connector --region=${_REGION} 2>/dev/null; then
+          gcloud compute networks vpc-access connectors create brainspark-connector \
+            --network=brainspark-vpc \
+            --region=${_REGION} \
+            --range=10.8.0.0/28 \
+            --min-instances=2 \
+            --max-instances=10
+          echo "✓ Created VPC connector"
+        else
+          echo "- VPC connector already exists"
+        fi
+    waitFor: ['create-vpc']
+
+  # ============================================================
+  # STEP 6: SETUP SERVICE ACCOUNT
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-service-account'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up service accounts..."
+
+        # Create backend service account
+        if ! gcloud iam service-accounts describe brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com 2>/dev/null; then
+          gcloud iam service-accounts create brainspark-backend \
+            --display-name="BrainSpark Backend"
+          echo "✓ Created service account"
+        else
+          echo "- Service account already exists"
+        fi
+
+        # Grant permissions
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+          --member="serviceAccount:brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --role="roles/secretmanager.secretAccessor" \
+          --quiet
+
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+          --member="serviceAccount:brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --role="roles/cloudsql.client" \
+          --quiet
+
+        echo "✓ Service account configured"
+    waitFor: ['create-secrets']
+
+  # ============================================================
+  # STEP 7: PRINT SUMMARY
+  # ============================================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'summary'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo ""
+        echo "=============================================="
+        echo "   BrainSpark Infrastructure Setup Complete!"
+        echo "=============================================="
+        echo ""
+        echo "Created resources:"
+        echo "  ✓ Artifact Registry: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}"
+        echo "  ✓ VPC: brainspark-vpc"
+        echo "  ✓ VPC Connector: brainspark-connector"
+        echo "  ✓ Service Account: brainspark-backend"
+        echo "  ✓ Secrets: anthropic-api-key, jwt-secret, db-password"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Create Cloud SQL instance (optional - use Terraform or Console)"
+        echo "  2. Create Redis instance (optional - use Terraform or Console)"
+        echo "  3. Run main deployment: gcloud builds submit --config=cloudbuild.yaml"
+        echo ""
+        echo "Or use Terraform for full infrastructure:"
+        echo "  cd terraform && terraform apply -var-file=environments/prod.tfvars"
+        echo ""
+        echo "=============================================="
+    waitFor: ['create-connector', 'create-service-account', 'create-registry']
+
+# Substitution variables
+substitutions:
+  _REGION: 'asia-south1'
+  _REPO_NAME: 'brainspark'
+  _ANTHROPIC_API_KEY: 'REPLACE_WITH_YOUR_API_KEY'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout
+timeout: '600s'
+
+# Tags
+tags:
+  - 'brainspark'
+  - 'infrastructure'
+  - 'setup'

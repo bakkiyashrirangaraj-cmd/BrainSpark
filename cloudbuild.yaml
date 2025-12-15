@@ -1,0 +1,311 @@
+# BrainSpark - Main Cloud Build Configuration
+# File: cloudbuild.yaml
+#
+# This configuration deploys the entire BrainSpark application to GCP:
+# - Backend API (FastAPI) to Cloud Run
+# - Frontend (React) to Cloud Run
+# - Database migrations
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild.yaml \
+#     --substitutions=_ENVIRONMENT=prod
+#
+# Prerequisites:
+#   1. Enable Cloud Build API
+#   2. Create Artifact Registry repository 'brainspark'
+#   3. Configure secrets in Secret Manager:
+#      - anthropic-api-key
+#      - jwt-secret
+#      - database-url
+#   4. Set up VPC connector for Cloud SQL access
+
+steps:
+  # ============================================================
+  # PHASE 1: SETUP & VALIDATION
+  # ============================================================
+
+  # Step 1: Validate project structure
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'validate-structure'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== BrainSpark Deployment Starting ==="
+        echo "Project: ${PROJECT_ID}"
+        echo "Region: ${_REGION}"
+        echo "Environment: ${_ENVIRONMENT}"
+        echo ""
+        echo "Validating project structure..."
+        test -f backend/Dockerfile || (echo "ERROR: backend/Dockerfile not found" && exit 1)
+        test -f backend/requirements.txt || (echo "ERROR: backend/requirements.txt not found" && exit 1)
+        test -f frontend/Dockerfile || (echo "ERROR: frontend/Dockerfile not found" && exit 1)
+        test -f frontend/package.json || (echo "ERROR: frontend/package.json not found" && exit 1)
+        test -f database/schema.sql || (echo "ERROR: database/schema.sql not found" && exit 1)
+        echo "✓ All required files present"
+
+  # Step 2: Create Artifact Registry repository (if not exists)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'setup-registry'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud artifacts repositories describe ${_REPO_NAME} \
+          --location=${_REGION} 2>/dev/null || \
+        gcloud artifacts repositories create ${_REPO_NAME} \
+          --repository-format=docker \
+          --location=${_REGION} \
+          --description="BrainSpark Docker images"
+        echo "✓ Artifact Registry ready"
+    waitFor: ['validate-structure']
+
+  # ============================================================
+  # PHASE 2: BUILD BACKEND
+  # ============================================================
+
+  # Step 3: Build backend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:latest'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${_ENVIRONMENT}'
+      - '-f'
+      - 'backend/Dockerfile'
+      - 'backend'
+    waitFor: ['setup-registry']
+
+  # Step 4: Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api'
+    waitFor: ['build-backend']
+
+  # ============================================================
+  # PHASE 3: BUILD FRONTEND
+  # ============================================================
+
+  # Step 5: Build frontend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:latest'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${_ENVIRONMENT}'
+      - '--build-arg'
+      - 'VITE_API_URL=${_API_URL}'
+      - '--build-arg'
+      - 'VITE_APP_URL=${_APP_URL}'
+      - '-f'
+      - 'frontend/Dockerfile'
+      - 'frontend'
+    waitFor: ['setup-registry']
+
+  # Step 6: Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web'
+    waitFor: ['build-frontend']
+
+  # ============================================================
+  # PHASE 4: DEPLOY BACKEND
+  # ============================================================
+
+  # Step 7: Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'brainspark-api'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=${_BACKEND_MIN_INSTANCES}'
+      - '--max-instances=${_BACKEND_MAX_INSTANCES}'
+      - '--memory=${_BACKEND_MEMORY}'
+      - '--cpu=${_BACKEND_CPU}'
+      - '--timeout=300'
+      - '--concurrency=100'
+      - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},APP_URL=${_APP_URL},API_URL=${_API_URL}'
+      - '--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,JWT_SECRET=jwt-secret:latest'
+    waitFor: ['push-backend']
+
+  # ============================================================
+  # PHASE 5: DEPLOY FRONTEND
+  # ============================================================
+
+  # Step 8: Deploy frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'brainspark-web'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=${_FRONTEND_MIN_INSTANCES}'
+      - '--max-instances=${_FRONTEND_MAX_INSTANCES}'
+      - '--memory=${_FRONTEND_MEMORY}'
+      - '--cpu=${_FRONTEND_CPU}'
+      - '--port=80'
+      - '--concurrency=80'
+    waitFor: ['push-frontend']
+
+  # ============================================================
+  # PHASE 6: VERIFICATION
+  # ============================================================
+
+  # Step 9: Get service URLs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'get-urls'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Deployment URLs ===" > /workspace/deployment-info.txt
+        BACKEND_URL=$(gcloud run services describe brainspark-api --region=${_REGION} --format='value(status.url)')
+        FRONTEND_URL=$(gcloud run services describe brainspark-web --region=${_REGION} --format='value(status.url)')
+        echo "Backend API: $${BACKEND_URL}" >> /workspace/deployment-info.txt
+        echo "Frontend: $${FRONTEND_URL}" >> /workspace/deployment-info.txt
+        echo "Production Domain: ${_APP_URL}" >> /workspace/deployment-info.txt
+        cat /workspace/deployment-info.txt
+    waitFor: ['deploy-backend', 'deploy-frontend']
+
+  # Step 10: Verify backend health
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'verify-backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$(gcloud run services describe brainspark-api --region=${_REGION} --format='value(status.url)')
+        echo "Verifying backend at $${BACKEND_URL}/health..."
+        for i in 1 2 3 4 5; do
+          if curl -sf "$${BACKEND_URL}/health"; then
+            echo "✓ Backend health check passed"
+            exit 0
+          fi
+          echo "Attempt $$i failed, retrying in 10s..."
+          sleep 10
+        done
+        echo "✗ Backend health check failed"
+        exit 1
+    waitFor: ['deploy-backend']
+
+  # Step 11: Verify frontend
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'verify-frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        FRONTEND_URL=$(gcloud run services describe brainspark-web --region=${_REGION} --format='value(status.url)')
+        echo "Verifying frontend at $${FRONTEND_URL}..."
+        for i in 1 2 3 4 5; do
+          if curl -sf "$${FRONTEND_URL}"; then
+            echo "✓ Frontend health check passed"
+            exit 0
+          fi
+          echo "Attempt $$i failed, retrying in 10s..."
+          sleep 10
+        done
+        echo "✗ Frontend health check failed"
+        exit 1
+    waitFor: ['deploy-frontend']
+
+  # Step 12: Print deployment summary
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'summary'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo ""
+        echo "=============================================="
+        echo "   BrainSpark Deployment Complete!"
+        echo "=============================================="
+        echo ""
+        cat /workspace/deployment-info.txt
+        echo ""
+        echo "Next steps:"
+        echo "1. Configure DNS for ${_APP_URL}"
+        echo "2. Configure DNS for api.brainspark.siggmatreders.com"
+        echo "3. Test the application"
+        echo ""
+        echo "=============================================="
+    waitFor: ['verify-backend', 'verify-frontend']
+
+# ============================================================
+# SUBSTITUTION VARIABLES
+# ============================================================
+
+substitutions:
+  # Region & Repository
+  _REGION: 'asia-south1'
+  _REPO_NAME: 'brainspark'
+  _ENVIRONMENT: 'prod'
+
+  # URLs
+  _APP_URL: 'https://brainspark.siggmatreders.com'
+  _API_URL: 'https://api.brainspark.siggmatreders.com'
+
+  # Backend Configuration
+  _BACKEND_MIN_INSTANCES: '1'
+  _BACKEND_MAX_INSTANCES: '10'
+  _BACKEND_MEMORY: '1Gi'
+  _BACKEND_CPU: '2'
+
+  # Frontend Configuration
+  _FRONTEND_MIN_INSTANCES: '1'
+  _FRONTEND_MAX_INSTANCES: '5'
+  _FRONTEND_MEMORY: '256Mi'
+  _FRONTEND_CPU: '1'
+
+# ============================================================
+# BUILD OPTIONS
+# ============================================================
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitution_option: 'ALLOW_LOOSE'
+
+# ============================================================
+# ARTIFACTS
+# ============================================================
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:latest'
+
+# Timeout (20 minutes for full deployment)
+timeout: '1200s'
+
+# Tags
+tags:
+  - 'brainspark'
+  - 'full-deployment'
+  - '${_ENVIRONMENT}'
