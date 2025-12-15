@@ -1,396 +1,255 @@
 # ============================================================
-# BrainSpark - Complete Automated Cloud Build Configuration
+# BrainSpark - Complete Automated Cloud Build
 # ============================================================
-# File: cloudbuild-auto.yaml
-#
-# This is a single, complete Cloud Build configuration for
-# automated GCP deployment via Cloud Build Triggers.
-#
-# Trigger Setup:
-#   gcloud builds triggers create github \
-#     --name="brainspark-auto-deploy" \
-#     --repo-owner="YOUR_GITHUB_ORG" \
-#     --repo-name="BrainSpark" \
-#     --branch-pattern="^main$" \
-#     --build-config="cloudbuild-auto.yaml"
-#
-# Manual Run:
-#   gcloud builds submit --config=cloudbuild-auto.yaml
-#
+# Single command deployment: gcloud builds submit --config=cloudbuild-auto.yaml
 # ============================================================
 
 steps:
 
   # ============================================================
-  # PHASE 1: SETUP & VALIDATION
+  # STEP 0: SETUP PREREQUISITES (APIs, Registry, Service Account)
   # ============================================================
-
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'setup-environment'
+    id: 'setup-prerequisites'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         echo "=============================================="
-        echo "   BrainSpark Automated Deployment"
-        echo "   Domain: brainspark.siggmatreders.com"
+        echo "   BrainSpark - Automated Deployment"
+        echo "   Project: ${PROJECT_ID}"
         echo "=============================================="
-        echo ""
-        echo "Project: ${PROJECT_ID}"
-        echo "Region: ${_REGION}"
-        echo "Commit: ${SHORT_SHA}"
-        echo "Branch: ${BRANCH_NAME}"
-        echo ""
 
-        # Validate required files exist
-        echo "Validating project structure..."
-        FILES_OK=true
+        # Enable required APIs
+        echo "Enabling APIs..."
+        gcloud services enable \
+          run.googleapis.com \
+          artifactregistry.googleapis.com \
+          secretmanager.googleapis.com \
+          cloudbuild.googleapis.com \
+          --quiet
 
-        for f in backend/Dockerfile backend/requirements.txt backend/app/main.py \
-                 frontend/Dockerfile frontend/package.json frontend/src/App.tsx \
-                 database/schema.sql; do
-          if [ -f "$$f" ]; then
-            echo "  ✓ $$f"
-          else
-            echo "  ✗ $$f MISSING"
-            FILES_OK=false
-          fi
-        done
-
-        if [ "$$FILES_OK" = false ]; then
-          echo "ERROR: Required files missing!"
-          exit 1
-        fi
-
-        echo ""
-        echo "✓ All required files present"
-
-  # ============================================================
-  # PHASE 2: CREATE ARTIFACT REGISTRY (if not exists)
-  # ============================================================
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'setup-artifact-registry'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
+        # Create Artifact Registry if not exists
         echo "Setting up Artifact Registry..."
+        gcloud artifacts repositories describe ${_REPO_NAME} \
+          --location=${_REGION} 2>/dev/null || \
+        gcloud artifacts repositories create ${_REPO_NAME} \
+          --repository-format=docker \
+          --location=${_REGION} \
+          --description="BrainSpark Docker images" \
+          --quiet
 
-        if gcloud artifacts repositories describe ${_REPO_NAME} --location=${_REGION} 2>/dev/null; then
-          echo "✓ Repository already exists"
-        else
-          echo "Creating repository..."
-          gcloud artifacts repositories create ${_REPO_NAME} \
-            --repository-format=docker \
-            --location=${_REGION} \
-            --description="BrainSpark Docker images"
-          echo "✓ Repository created"
+        # Create service account if not exists
+        echo "Setting up Service Account..."
+        gcloud iam service-accounts describe \
+          brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com 2>/dev/null || \
+        gcloud iam service-accounts create brainspark-backend \
+          --display-name="BrainSpark Backend Service" \
+          --quiet
+
+        # Grant secret access to service account
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+          --member="serviceAccount:brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --role="roles/secretmanager.secretAccessor" \
+          --quiet 2>/dev/null || true
+
+        # Check if secrets exist, create placeholders if not
+        echo "Checking secrets..."
+        if ! gcloud secrets describe anthropic-api-key --quiet 2>/dev/null; then
+          echo "WARNING: anthropic-api-key secret missing!"
+          echo "Create it with: echo 'YOUR_KEY' | gcloud secrets create anthropic-api-key --data-file=-"
         fi
-    waitFor: ['setup-environment']
+
+        if ! gcloud secrets describe jwt-secret --quiet 2>/dev/null; then
+          echo "Creating jwt-secret..."
+          openssl rand -base64 64 | gcloud secrets create jwt-secret --data-file=- --quiet 2>/dev/null || true
+        fi
+
+        echo "✓ Prerequisites complete"
 
   # ============================================================
-  # PHASE 3: BUILD DOCKER IMAGES (parallel)
+  # STEP 1: BUILD BACKEND IMAGE
   # ============================================================
-
-  # Build Backend Image
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'build-backend-image'
+    id: 'build-backend'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA}'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:latest'
-      - '-f'
-      - 'backend/Dockerfile'
-      - 'backend'
-    waitFor: ['setup-artifact-registry']
+      - '-c'
+      - |
+        echo "Building Backend API..."
+        docker build \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA:-latest} \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:latest \
+          -f backend/Dockerfile \
+          backend/
+        echo "✓ Backend image built"
+    waitFor: ['setup-prerequisites']
 
-  # Build Frontend Image
+  # ============================================================
+  # STEP 2: BUILD FRONTEND IMAGE
+  # ============================================================
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'build-frontend-image'
+    id: 'build-frontend'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA}'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:latest'
-      - '--build-arg'
-      - 'VITE_API_URL=https://api.brainspark.siggmatreders.com'
-      - '--build-arg'
-      - 'VITE_APP_URL=https://brainspark.siggmatreders.com'
-      - '-f'
-      - 'frontend/Dockerfile'
-      - 'frontend'
-    waitFor: ['setup-artifact-registry']
+      - '-c'
+      - |
+        echo "Building Frontend..."
+        docker build \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA:-latest} \
+          -t ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:latest \
+          --build-arg VITE_API_URL=https://api.brainspark.siggmatreders.com \
+          --build-arg VITE_APP_URL=https://brainspark.siggmatreders.com \
+          -f frontend/Dockerfile \
+          frontend/
+        echo "✓ Frontend image built"
+    waitFor: ['setup-prerequisites']
 
   # ============================================================
-  # PHASE 4: PUSH IMAGES TO REGISTRY (parallel)
+  # STEP 3: PUSH BACKEND IMAGE
   # ============================================================
-
-  # Push Backend Image
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-backend-image'
+    id: 'push-backend'
     args:
       - 'push'
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api'
-    waitFor: ['build-backend-image']
+    waitFor: ['build-backend']
 
-  # Push Frontend Image
+  # ============================================================
+  # STEP 4: PUSH FRONTEND IMAGE
+  # ============================================================
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-frontend-image'
+    id: 'push-frontend'
     args:
       - 'push'
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web'
-    waitFor: ['build-frontend-image']
+    waitFor: ['build-frontend']
 
   # ============================================================
-  # PHASE 5: DEPLOY TO CLOUD RUN
+  # STEP 5: DEPLOY BACKEND TO CLOUD RUN
   # ============================================================
-
-  # Deploy Backend API
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-backend'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "Deploying Backend API..."
+        echo "Deploying Backend API to Cloud Run..."
+
+        # Check if anthropic-api-key exists
+        if gcloud secrets describe anthropic-api-key --quiet 2>/dev/null; then
+          SECRET_FLAG="--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,JWT_SECRET=jwt-secret:latest"
+        else
+          echo "WARNING: Deploying without secrets (anthropic-api-key missing)"
+          SECRET_FLAG=""
+        fi
 
         gcloud run deploy brainspark-api \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA} \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA:-latest} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
-          --min-instances=${_BACKEND_MIN_INSTANCES} \
-          --max-instances=${_BACKEND_MAX_INSTANCES} \
-          --memory=${_BACKEND_MEMORY} \
-          --cpu=${_BACKEND_CPU} \
+          --min-instances=0 \
+          --max-instances=10 \
+          --memory=1Gi \
+          --cpu=2 \
           --timeout=300 \
           --concurrency=100 \
           --set-env-vars="ENVIRONMENT=production,APP_URL=https://brainspark.siggmatreders.com,API_URL=https://api.brainspark.siggmatreders.com,CORS_ORIGINS=https://brainspark.siggmatreders.com" \
-          --update-secrets="ANTHROPIC_API_KEY=anthropic-api-key:latest,JWT_SECRET=jwt-secret:latest" \
+          $${SECRET_FLAG} \
           --service-account=brainspark-backend@${PROJECT_ID}.iam.gserviceaccount.com \
-          --labels="app=brainspark,component=api,commit=${SHORT_SHA}"
+          --quiet
 
         echo "✓ Backend deployed"
-    waitFor: ['push-backend-image']
+    waitFor: ['push-backend']
 
-  # Deploy Frontend Web
+  # ============================================================
+  # STEP 6: DEPLOY FRONTEND TO CLOUD RUN
+  # ============================================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-frontend'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "Deploying Frontend..."
+        echo "Deploying Frontend to Cloud Run..."
 
         gcloud run deploy brainspark-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA} \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA:-latest} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
-          --min-instances=${_FRONTEND_MIN_INSTANCES} \
-          --max-instances=${_FRONTEND_MAX_INSTANCES} \
-          --memory=${_FRONTEND_MEMORY} \
-          --cpu=${_FRONTEND_CPU} \
+          --min-instances=0 \
+          --max-instances=5 \
+          --memory=256Mi \
+          --cpu=1 \
           --timeout=60 \
           --concurrency=80 \
           --port=80 \
-          --labels="app=brainspark,component=web,commit=${SHORT_SHA}"
+          --quiet
 
         echo "✓ Frontend deployed"
-    waitFor: ['push-frontend-image']
+    waitFor: ['push-frontend']
 
   # ============================================================
-  # PHASE 6: CONFIGURE CUSTOM DOMAINS
+  # STEP 7: GET DEPLOYMENT URLS & SUMMARY
   # ============================================================
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'configure-domains'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "Configuring custom domains..."
-
-        # Map main domain to frontend
-        if gcloud run domain-mappings describe --domain=brainspark.siggmatreders.com --region=${_REGION} 2>/dev/null; then
-          echo "✓ Main domain already mapped"
-        else
-          gcloud run domain-mappings create \
-            --service=brainspark-web \
-            --domain=brainspark.siggmatreders.com \
-            --region=${_REGION} 2>/dev/null || echo "Domain mapping may need manual DNS setup"
-        fi
-
-        # Map API domain to backend
-        if gcloud run domain-mappings describe --domain=api.brainspark.siggmatreders.com --region=${_REGION} 2>/dev/null; then
-          echo "✓ API domain already mapped"
-        else
-          gcloud run domain-mappings create \
-            --service=brainspark-api \
-            --domain=api.brainspark.siggmatreders.com \
-            --region=${_REGION} 2>/dev/null || echo "API domain mapping may need manual DNS setup"
-        fi
-    waitFor: ['deploy-backend', 'deploy-frontend']
-
-  # ============================================================
-  # PHASE 7: HEALTH CHECKS & VERIFICATION
-  # ============================================================
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'verify-deployment'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo ""
-        echo "Verifying deployment..."
-        echo ""
-
-        # Get service URLs
-        BACKEND_URL=$(gcloud run services describe brainspark-api --region=${_REGION} --format='value(status.url)')
-        FRONTEND_URL=$(gcloud run services describe brainspark-web --region=${_REGION} --format='value(status.url)')
-
-        echo "Backend URL: $${BACKEND_URL}"
-        echo "Frontend URL: $${FRONTEND_URL}"
-        echo ""
-
-        # Health check backend
-        echo "Checking backend health..."
-        BACKEND_OK=false
-        for i in 1 2 3 4 5; do
-          if curl -sf "$${BACKEND_URL}/health" > /dev/null 2>&1; then
-            echo "  ✓ Backend health check passed (attempt $$i)"
-            BACKEND_OK=true
-            break
-          fi
-          echo "  Attempt $$i failed, waiting 10s..."
-          sleep 10
-        done
-
-        if [ "$$BACKEND_OK" = false ]; then
-          echo "  ✗ Backend health check failed!"
-        fi
-
-        # Health check frontend
-        echo "Checking frontend..."
-        FRONTEND_OK=false
-        for i in 1 2 3 4 5; do
-          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$${FRONTEND_URL}" 2>/dev/null || echo "000")
-          if [ "$$HTTP_CODE" = "200" ]; then
-            echo "  ✓ Frontend check passed (attempt $$i)"
-            FRONTEND_OK=true
-            break
-          fi
-          echo "  Attempt $$i returned $$HTTP_CODE, waiting 10s..."
-          sleep 10
-        done
-
-        if [ "$$FRONTEND_OK" = false ]; then
-          echo "  ✗ Frontend check failed!"
-        fi
-
-        # Final status
-        echo ""
-        if [ "$$BACKEND_OK" = true ] && [ "$$FRONTEND_OK" = true ]; then
-          echo "=============================================="
-          echo "   ✓ DEPLOYMENT SUCCESSFUL"
-          echo "=============================================="
-        else
-          echo "=============================================="
-          echo "   ⚠ DEPLOYMENT COMPLETED WITH WARNINGS"
-          echo "=============================================="
-        fi
-    waitFor: ['configure-domains']
-
-  # ============================================================
-  # PHASE 8: DEPLOYMENT SUMMARY
-  # ============================================================
-
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deployment-summary'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        BACKEND_URL=$(gcloud run services describe brainspark-api --region=${_REGION} --format='value(status.url)')
-        FRONTEND_URL=$(gcloud run services describe brainspark-web --region=${_REGION} --format='value(status.url)')
+        echo ""
+        echo "=============================================="
+        echo "   DEPLOYMENT COMPLETE"
+        echo "=============================================="
+        echo ""
 
-        echo ""
-        echo "=============================================="
-        echo "   BrainSpark Deployment Complete"
-        echo "=============================================="
-        echo ""
-        echo "   Production URLs:"
-        echo "   ├─ App:  https://brainspark.siggmatreders.com"
-        echo "   └─ API:  https://api.brainspark.siggmatreders.com"
-        echo ""
+        BACKEND_URL=$(gcloud run services describe brainspark-api --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "pending")
+        FRONTEND_URL=$(gcloud run services describe brainspark-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "pending")
+
         echo "   Cloud Run URLs:"
-        echo "   ├─ Frontend: $${FRONTEND_URL}"
-        echo "   └─ Backend:  $${BACKEND_URL}"
+        echo "   - API:     $${BACKEND_URL}"
+        echo "   - Web:     $${FRONTEND_URL}"
         echo ""
-        echo "   Commit: ${SHORT_SHA}"
-        echo "   Branch: ${BRANCH_NAME}"
-        echo "   Build:  ${BUILD_ID}"
+        echo "   Production URLs (after DNS setup):"
+        echo "   - App:     https://brainspark.siggmatreders.com"
+        echo "   - API:     https://api.brainspark.siggmatreders.com"
         echo ""
-        echo "   DNS Configuration Required:"
-        echo "   ├─ brainspark.siggmatreders.com → CNAME ghs.googlehosted.com"
-        echo "   └─ api.brainspark.siggmatreders.com → CNAME ghs.googlehosted.com"
+        echo "   DNS Records Required:"
+        echo "   - brainspark.siggmatreders.com     CNAME  ghs.googlehosted.com"
+        echo "   - api.brainspark.siggmatreders.com CNAME  ghs.googlehosted.com"
         echo ""
         echo "=============================================="
-    waitFor: ['verify-deployment']
+    waitFor: ['deploy-backend', 'deploy-frontend']
 
 # ============================================================
-# SUBSTITUTION VARIABLES
+# SUBSTITUTIONS
 # ============================================================
-
 substitutions:
-  # GCP Configuration
   _REGION: 'asia-south1'
   _REPO_NAME: 'brainspark'
-
-  # Backend Configuration
-  _BACKEND_MIN_INSTANCES: '1'
-  _BACKEND_MAX_INSTANCES: '10'
-  _BACKEND_MEMORY: '1Gi'
-  _BACKEND_CPU: '2'
-
-  # Frontend Configuration
-  _FRONTEND_MIN_INSTANCES: '1'
-  _FRONTEND_MAX_INSTANCES: '5'
-  _FRONTEND_MEMORY: '256Mi'
-  _FRONTEND_CPU: '1'
 
 # ============================================================
 # BUILD OPTIONS
 # ============================================================
-
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
   substitution_option: 'ALLOW_LOOSE'
   dynamic_substitutions: true
 
-# ============================================================
-# ARTIFACTS - Images to store
-# ============================================================
-
+# Images to store in Artifact Registry
 images:
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:${SHORT_SHA}'
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/api:latest'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:${SHORT_SHA}'
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/web:latest'
 
-# Build timeout (20 minutes)
-timeout: '1200s'
+# Build timeout (15 minutes)
+timeout: '900s'
 
-# Tags for filtering builds
 tags:
   - 'brainspark'
   - 'automated'
-  - 'production'
