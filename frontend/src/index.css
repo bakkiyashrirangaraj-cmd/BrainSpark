@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-dark-bg text-white;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-spark-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-spark-500;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-spark-500 to-spark-600 text-white font-semibold py-3 px-6 rounded-xl
+           hover:from-spark-600 hover:to-spark-700 transition-all duration-300
+           shadow-lg hover:shadow-spark-500/25 active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-dark-card border border-spark-500/30 text-white font-semibold py-3 px-6 rounded-xl
+           hover:bg-spark-500/10 hover:border-spark-500/50 transition-all duration-300;
+  }
+
+  .card {
+    @apply bg-dark-card border border-dark-border rounded-2xl p-6
+           shadow-xl backdrop-blur-sm;
+  }
+
+  .input {
+    @apply bg-dark-bg border border-dark-border rounded-xl px-4 py-3
+           text-white placeholder-gray-500
+           focus:outline-none focus:border-spark-500 focus:ring-1 focus:ring-spark-500
+           transition-all duration-200;
+  }
+
+  /* Age group specific styles */
+  .cubs-gradient {
+    @apply bg-gradient-to-r from-cubs-primary to-cubs-secondary;
+  }
+
+  .explorers-gradient {
+    @apply bg-gradient-to-r from-explorers-primary to-explorers-secondary;
+  }
+
+  .masters-gradient {
+    @apply bg-gradient-to-r from-masters-primary to-masters-secondary;
+  }
+
+  /* Constellation node */
+  .constellation-node {
+    @apply absolute w-16 h-16 rounded-full flex items-center justify-center
+           text-2xl cursor-pointer transform transition-all duration-300
+           hover:scale-110 shadow-lg;
+  }
+
+  .constellation-node.unlocked {
+    @apply bg-gradient-to-br from-spark-500 to-spark-700 animate-glow;
+  }
+
+  .constellation-node.locked {
+    @apply bg-dark-card border-2 border-dashed border-gray-600 opacity-50;
+  }
+}
+
+/* Animations */
+@layer utilities {
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  /* Star twinkle animation */
+  .star {
+    @apply absolute rounded-full bg-white;
+    animation: twinkle var(--duration, 3s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+  }
+
+  @keyframes twinkle {
+    0%, 100% {
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+  }
+
+  /* Pulse glow for active elements */
+  .pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 40px rgba(99, 102, 241, 0.8);
+    }
+  }
+}
