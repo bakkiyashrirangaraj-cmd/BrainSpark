@@ -57,40 +57,49 @@ if !errorlevel! neq 0 (
     echo     Download Python 3.11 from: https://www.python.org/downloads/release/python-3119/
     echo     Or run: winget install Python.Python.3.11
     set "MISSING_DEPS=1"
-) else (
-    for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do (
-        set "PY_VER=%%v"
-    )
-    echo [..] Python !PY_VER! found
-
-    REM Extract major and minor version
-    for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
-        set "PY_MAJOR=%%a"
-        set "PY_MINOR=%%b"
-    )
-
-    REM Check if version is compatible (3.9 - 3.12 recommended)
-    if !PY_MAJOR! equ 3 (
-        if !PY_MINOR! geq 9 if !PY_MINOR! leq 12 (
-            echo [OK] Python !PY_VER! - Compatible version
-        ) else if !PY_MINOR! geq 13 (
-            echo [X] Python !PY_VER! is too new!
-            echo     Pre-built packages [pydantic, etc.] are not available for Python 3.13+
-            echo     These packages require Rust compiler to build from source.
-            echo.
-            echo     Please install Python 3.11 [recommended]:
-            echo     winget install Python.Python.3.11
-            echo     Or download from: https://www.python.org/downloads/release/python-3119/
-            set "MISSING_DEPS=1"
-        ) else (
-            echo [X] Python !PY_VER! is too old - requires Python 3.9+
-            set "MISSING_DEPS=1"
-        )
-    ) else (
-        echo [X] Python !PY_VER! - Unsupported major version
-        set "MISSING_DEPS=1"
-    )
+    goto :python_check_done
 )
+
+REM Get Python version
+for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do set "PY_VER=%%v"
+
+REM Extract major and minor version numbers
+for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
+    set "PY_MAJOR=%%a"
+    set "PY_MINOR=%%b"
+)
+
+echo [..] Python !PY_VER! detected [version !PY_MAJOR!.!PY_MINOR!]
+
+REM Version compatibility check - need Python 3.9 to 3.12
+if !PY_MAJOR! neq 3 (
+    echo [X] Python !PY_VER! - Unsupported major version [need Python 3.x]
+    set "MISSING_DEPS=1"
+    goto :python_check_done
+)
+
+if !PY_MINOR! lss 9 (
+    echo [X] Python !PY_VER! is too old - requires Python 3.9 or higher
+    set "MISSING_DEPS=1"
+    goto :python_check_done
+)
+
+if !PY_MINOR! gtr 12 (
+    echo [X] Python !PY_VER! is too new!
+    echo     Pre-built packages [pydantic, etc.] are not available for Python 3.13+
+    echo     These packages require Rust compiler to build from source.
+    echo.
+    echo     Please install Python 3.11 [recommended]:
+    echo     winget install Python.Python.3.11
+    echo     Or download from: https://www.python.org/downloads/release/python-3119/
+    set "MISSING_DEPS=1"
+    goto :python_check_done
+)
+
+REM If we get here, Python version is compatible (3.9-3.12)
+echo [OK] Python !PY_VER! - Compatible version
+
+:python_check_done
 
 REM Check pip
 python -m pip --version >nul 2>&1

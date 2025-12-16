@@ -58,40 +58,47 @@ where python >nul 2>&1
 if !errorlevel! neq 0 (
     echo [X] Python not found
     set "INSTALL_NEEDED=1"
-) else (
-    for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do (
-        set "PY_VER=%%v"
-    )
-    echo [..] Python !PY_VER! found
-
-    REM Extract major and minor version
-    for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
-        set "PY_MAJOR=%%a"
-        set "PY_MINOR=%%b"
-    )
-
-    REM Check if version is compatible (3.9 - 3.12 recommended)
-    if !PY_MAJOR! equ 3 (
-        if !PY_MINOR! geq 9 if !PY_MINOR! leq 12 (
-            echo [OK] Python !PY_VER! - Compatible version
-            set "PYTHON_OK=1"
-            set "PYTHON_VERSION_OK=1"
-        ) else if !PY_MINOR! geq 13 (
-            echo [X] Python !PY_VER! is too new - no pre-built packages available
-            echo     Packages like pydantic require Rust compiler for Python 3.13+
-            set "PYTHON_OK="
-            set "INSTALL_NEEDED=1"
-        ) else (
-            echo [X] Python !PY_VER! is too old - requires Python 3.9+
-            set "PYTHON_OK="
-            set "INSTALL_NEEDED=1"
-        )
-    ) else (
-        echo [X] Python !PY_VER! - Unsupported major version
-        set "PYTHON_OK="
-        set "INSTALL_NEEDED=1"
-    )
+    goto :python_check_done
 )
+
+REM Get Python version
+for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do set "PY_VER=%%v"
+
+REM Extract major and minor version numbers
+for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
+    set "PY_MAJOR=%%a"
+    set "PY_MINOR=%%b"
+)
+
+echo [..] Python !PY_VER! detected [version !PY_MAJOR!.!PY_MINOR!]
+
+REM Version compatibility check - need Python 3.9 to 3.12
+if !PY_MAJOR! neq 3 (
+    echo [X] Python !PY_VER! - Unsupported major version [need Python 3.x]
+    set "INSTALL_NEEDED=1"
+    goto :python_check_done
+)
+
+if !PY_MINOR! lss 9 (
+    echo [X] Python !PY_VER! is too old - requires Python 3.9 or higher
+    set "INSTALL_NEEDED=1"
+    goto :python_check_done
+)
+
+if !PY_MINOR! gtr 12 (
+    echo [X] Python !PY_VER! is too new - no pre-built packages available
+    echo     Packages like pydantic-core require Rust compiler for Python 3.13+
+    echo     Please install Python 3.11 [recommended] or 3.12
+    set "INSTALL_NEEDED=1"
+    goto :python_check_done
+)
+
+REM If we get here, Python version is compatible (3.9-3.12)
+echo [OK] Python !PY_VER! - Compatible version
+set "PYTHON_OK=1"
+set "PYTHON_VERSION_OK=1"
+
+:python_check_done
 
 echo.
 
