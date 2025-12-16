@@ -39,6 +39,7 @@ echo.
 set "INSTALL_NEEDED="
 set "NODE_OK="
 set "PYTHON_OK="
+set "PYTHON_VERSION_OK="
 
 REM Check Node.js
 where node >nul 2>&1
@@ -58,9 +59,37 @@ if !errorlevel! neq 0 (
     echo [X] Python not found
     set "INSTALL_NEEDED=1"
 ) else (
-    for /f "tokens=*" %%i in ('python --version 2^>nul') do (
-        echo [OK] %%i
-        set "PYTHON_OK=1"
+    for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do (
+        set "PY_VER=%%v"
+    )
+    echo [..] Python !PY_VER! found
+
+    REM Extract major and minor version
+    for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
+        set "PY_MAJOR=%%a"
+        set "PY_MINOR=%%b"
+    )
+
+    REM Check if version is compatible (3.9 - 3.12 recommended)
+    if !PY_MAJOR! equ 3 (
+        if !PY_MINOR! geq 9 if !PY_MINOR! leq 12 (
+            echo [OK] Python !PY_VER! - Compatible version
+            set "PYTHON_OK=1"
+            set "PYTHON_VERSION_OK=1"
+        ) else if !PY_MINOR! geq 13 (
+            echo [X] Python !PY_VER! is too new - no pre-built packages available
+            echo     Packages like pydantic require Rust compiler for Python 3.13+
+            set "PYTHON_OK="
+            set "INSTALL_NEEDED=1"
+        ) else (
+            echo [X] Python !PY_VER! is too old - requires Python 3.9+
+            set "PYTHON_OK="
+            set "INSTALL_NEEDED=1"
+        )
+    ) else (
+        echo [X] Python !PY_VER! - Unsupported major version
+        set "PYTHON_OK="
+        set "INSTALL_NEEDED=1"
     )
 )
 
@@ -68,11 +97,21 @@ echo.
 
 if defined INSTALL_NEEDED (
     echo ==============================================================
-    echo    Missing Dependencies - Auto-Install Options
+    echo    Missing or Incompatible Dependencies
     echo ==============================================================
     echo.
-    echo Would you like to install missing dependencies?
-    echo   1. Yes, install via winget [Windows 10/11]
+    if not defined NODE_OK echo    - Node.js: Not found
+    if not defined PYTHON_OK (
+        if defined PY_VER (
+            echo    - Python: !PY_VER! installed but incompatible
+            echo      [Requires Python 3.9-3.12 for pre-built packages]
+        ) else (
+            echo    - Python: Not found
+        )
+    )
+    echo.
+    echo Would you like to install compatible versions via winget?
+    echo   1. Yes, install Python 3.11 [recommended] and Node.js LTS
     echo   2. No, I'll install manually
     echo.
     set /p "install_choice=Enter choice (1-2): "
@@ -105,13 +144,14 @@ if defined INSTALL_NEEDED (
         )
 
         if not defined PYTHON_OK (
-            echo Installing Python 3.11...
+            echo.
+            echo Installing Python 3.11 [recommended stable version]...
             winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements -h
             if !errorlevel! equ 0 (
-                echo [OK] Python installed
+                echo [OK] Python 3.11 installed
                 set "INSTALL_PERFORMED=1"
             ) else (
-                echo [X] Failed to install Python
+                echo [X] Failed to install Python 3.11
             )
         )
 
@@ -128,6 +168,12 @@ if defined INSTALL_NEEDED (
             echo    This is required because Windows needs to refresh the PATH
             echo    environment variable after installing new programs.
             echo.
+            if defined PY_VER (
+                echo    NOTE: Python 3.11 was installed alongside your existing
+                echo    Python !PY_VER!. The new terminal should use Python 3.11.
+                echo    If not, you may need to adjust your PATH or use 'py -3.11'
+                echo.
+            )
             echo ==============================================================
             pause
             exit /b 0
@@ -135,8 +181,11 @@ if defined INSTALL_NEEDED (
     ) else (
         echo.
         echo Please install the following manually:
-        echo   - Node.js: https://nodejs.org/
-        echo   - Python:  https://www.python.org/downloads/
+        echo   - Node.js LTS: https://nodejs.org/
+        echo   - Python 3.11: https://www.python.org/downloads/release/python-3119/
+        echo.
+        echo    IMPORTANT: Python 3.13+ is NOT compatible due to missing
+        echo    pre-built packages. Use Python 3.9, 3.10, 3.11, or 3.12.
         echo.
         echo After installation, close this window and run INSTALL.bat again.
         pause

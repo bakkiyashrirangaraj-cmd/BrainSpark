@@ -50,15 +50,46 @@ if !errorlevel! neq 0 (
     for /f "tokens=*" %%i in ('npm --version 2^>nul') do echo [OK] npm: %%i
 )
 
-REM Check Python
+REM Check Python and version compatibility
 where python >nul 2>&1
 if !errorlevel! neq 0 (
     echo [X] Python not found!
-    echo     Download from: https://www.python.org/downloads/
+    echo     Download Python 3.11 from: https://www.python.org/downloads/release/python-3119/
     echo     Or run: winget install Python.Python.3.11
     set "MISSING_DEPS=1"
 ) else (
-    for /f "tokens=*" %%i in ('python --version 2^>nul') do echo [OK] %%i
+    for /f "tokens=2 delims= " %%v in ('python --version 2^>nul') do (
+        set "PY_VER=%%v"
+    )
+    echo [..] Python !PY_VER! found
+
+    REM Extract major and minor version
+    for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
+        set "PY_MAJOR=%%a"
+        set "PY_MINOR=%%b"
+    )
+
+    REM Check if version is compatible (3.9 - 3.12 recommended)
+    if !PY_MAJOR! equ 3 (
+        if !PY_MINOR! geq 9 if !PY_MINOR! leq 12 (
+            echo [OK] Python !PY_VER! - Compatible version
+        ) else if !PY_MINOR! geq 13 (
+            echo [X] Python !PY_VER! is too new!
+            echo     Pre-built packages [pydantic, etc.] are not available for Python 3.13+
+            echo     These packages require Rust compiler to build from source.
+            echo.
+            echo     Please install Python 3.11 [recommended]:
+            echo     winget install Python.Python.3.11
+            echo     Or download from: https://www.python.org/downloads/release/python-3119/
+            set "MISSING_DEPS=1"
+        ) else (
+            echo [X] Python !PY_VER! is too old - requires Python 3.9+
+            set "MISSING_DEPS=1"
+        )
+    ) else (
+        echo [X] Python !PY_VER! - Unsupported major version
+        set "MISSING_DEPS=1"
+    )
 )
 
 REM Check pip
@@ -82,8 +113,11 @@ echo.
 
 if defined MISSING_DEPS (
     echo ==============================================================
-    echo ERROR: Missing required dependencies. Please install them first.
+    echo ERROR: Missing or incompatible dependencies detected.
     echo ==============================================================
+    echo.
+    echo To fix Python version issues, install Python 3.11:
+    echo   winget install Python.Python.3.11
     echo.
     echo After installing, close this window and run setup-windows.bat again.
     pause
