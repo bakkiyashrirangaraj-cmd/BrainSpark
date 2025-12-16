@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - APP_URL=http://localhost:5173
+      - API_URL=http://localhost:8000
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - DATABASE_URL=sqlite:///./brainspark.db
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your-key-here}
+      - JWT_SECRET=local-docker-secret-change-in-production
+    volumes:
+      - ./backend:/app
+      - backend_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+        - VITE_APP_URL=http://localhost:5173
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backend_data:
