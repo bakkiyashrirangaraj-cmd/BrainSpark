@@ -3,6 +3,8 @@
 # File: app/main.py
 # ============================================================
 
+from __future__ import annotations
+
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials

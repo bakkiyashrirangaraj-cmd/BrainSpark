@@ -1,5 +1,6 @@
 # BrainSpark Backend Dependencies
-# Python 3.11+
+# Requires Python 3.9+ (3.10+ recommended for security support)
+# See pyproject.toml for full project configuration
 
 # Web Framework
 fastapi==0.109.0

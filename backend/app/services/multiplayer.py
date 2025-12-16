@@ -3,6 +3,8 @@
 # app/services/multiplayer.py
 # ============================================================
 
+from __future__ import annotations
+
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field

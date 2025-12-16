@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brainspark-backend"
+version = "1.0.0"
+description = "AI-powered learning companion for curious kids - Backend API"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Topic :: Education",
+]
+keywords = ["education", "ai", "children", "learning", "fastapi"]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    "sqlalchemy>=2.0.25",
+    "psycopg2-binary>=2.9.9",
+    "alembic>=1.13.1",
+    "redis>=5.0.1",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "pyjwt>=2.8.0",
+    "httpx>=0.26.0",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "email-validator>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "python-dateutil>=2.8.2",
+    "gunicorn>=21.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
