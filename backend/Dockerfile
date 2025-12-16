@@ -1,8 +1,13 @@
 # BrainSpark Backend Dockerfile
-FROM python:3.11-slim
+# Supports Python 3.9, 3.10, 3.11, 3.12, 3.13
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim
 
 # Set working directory
 WORKDIR /app
+
+# Verify Python version meets requirements (>=3.9)
+RUN python -c "import sys; assert sys.version_info >= (3, 9), f'Python 3.9+ required, got {sys.version}'"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -14,8 +19,9 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
