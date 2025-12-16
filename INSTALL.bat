@@ -111,17 +111,18 @@ if defined INSTALL_NEEDED (
     if not defined PYTHON_OK (
         if defined PY_VER (
             echo    - Python: !PY_VER! installed but incompatible
-            echo      [Requires Python 3.9-3.12 for pre-built packages]
+            echo      Requires Python 3.9-3.12 for pre-built packages
         ) else (
             echo    - Python: Not found
         )
     )
     echo.
     echo Would you like to install compatible versions via winget?
-    echo   1. Yes, install Python 3.11 [recommended] and Node.js LTS
-    echo   2. No, I'll install manually
     echo.
-    set /p "install_choice=Enter choice (1-2): "
+    echo   1 = Yes, install Python 3.11 and Node.js LTS automatically
+    echo   2 = No, I will install manually
+    echo.
+    set /p "install_choice=Enter your choice [1 or 2]: "
 
     if "!install_choice!"=="1" (
         echo.
