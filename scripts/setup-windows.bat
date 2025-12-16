@@ -15,6 +15,8 @@ echo.
 
 REM Set project root directory
 set "PROJECT_ROOT=%~dp0.."
+REM Remove trailing backslash if present
+if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 cd /d "%PROJECT_ROOT%"
 
 echo Project Root: %PROJECT_ROOT%
@@ -26,52 +28,54 @@ REM ============================================================
 echo [1/6] Checking Prerequisites...
 echo.
 
+set "MISSING_DEPS="
+
 REM Check Node.js
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Node.js not found!
     echo     Download from: https://nodejs.org/
     echo     Or run: winget install OpenJS.NodeJS.LTS
     set "MISSING_DEPS=1"
 ) else (
-    for /f "tokens=*" %%i in ('node --version') do echo [OK] Node.js: %%i
+    for /f "tokens=*" %%i in ('node --version 2^>nul') do echo [OK] Node.js: %%i
 )
 
 REM Check npm
 where npm >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] npm not found!
     set "MISSING_DEPS=1"
 ) else (
-    for /f "tokens=*" %%i in ('npm --version') do echo [OK] npm: %%i
+    for /f "tokens=*" %%i in ('npm --version 2^>nul') do echo [OK] npm: %%i
 )
 
 REM Check Python
 where python >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Python not found!
     echo     Download from: https://www.python.org/downloads/
     echo     Or run: winget install Python.Python.3.11
     set "MISSING_DEPS=1"
 ) else (
-    for /f "tokens=*" %%i in ('python --version') do echo [OK] %%i
+    for /f "tokens=*" %%i in ('python --version 2^>nul') do echo [OK] %%i
 )
 
 REM Check pip
-where pip >nul 2>&1
-if %errorlevel% neq 0 (
+python -m pip --version >nul 2>&1
+if !errorlevel! neq 0 (
     echo [X] pip not found!
     set "MISSING_DEPS=1"
 ) else (
-    for /f "tokens=*" %%i in ('pip --version') do echo [OK] pip installed
+    echo [OK] pip installed
 )
 
 REM Check Docker (optional)
 where docker >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [!] Docker not found (optional - for containerized deployment)
+if !errorlevel! neq 0 (
+    echo [!] Docker not found [optional - for containerized deployment]
 ) else (
-    for /f "tokens=*" %%i in ('docker --version') do echo [OK] %%i
+    for /f "tokens=*" %%i in ('docker --version 2^>nul') do echo [OK] %%i
 )
 
 echo.
@@ -80,6 +84,8 @@ if defined MISSING_DEPS (
     echo ==============================================================
     echo ERROR: Missing required dependencies. Please install them first.
     echo ==============================================================
+    echo.
+    echo After installing, close this window and run setup-windows.bat again.
     pause
     exit /b 1
 )
@@ -108,13 +114,13 @@ if not exist "%PROJECT_ROOT%\backend\.env" (
         echo # CORS
         echo CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
         echo.
-        echo # Database ^(SQLite for local dev^)
+        echo # Database [SQLite for local dev]
         echo DATABASE_URL=sqlite:///./brainspark.db
         echo.
-        echo # Anthropic API Key ^(REQUIRED - get from https://console.anthropic.com^)
+        echo # Anthropic API Key [REQUIRED - get from https://console.anthropic.com]
         echo ANTHROPIC_API_KEY=your-api-key-here
         echo.
-        echo # JWT Secret ^(auto-generated^)
+        echo # JWT Secret [auto-generated]
         echo JWT_SECRET=local-dev-secret-change-in-production-abc123xyz789
         echo JWT_ALGORITHM=HS256
         echo JWT_EXPIRATION_HOURS=24
@@ -146,21 +152,43 @@ echo [3/6] Installing Backend Dependencies...
 echo.
 
 cd /d "%PROJECT_ROOT%\backend"
+if !errorlevel! neq 0 (
+    echo [X] Backend directory not found!
+    pause
+    exit /b 1
+)
 
 REM Create virtual environment if not exists
 if not exist "venv" (
     echo Creating Python virtual environment...
     python -m venv venv
+    if !errorlevel! neq 0 (
+        echo [X] Failed to create virtual environment!
+        pause
+        exit /b 1
+    )
+)
+
+REM Check venv activation script exists
+if not exist "venv\Scripts\activate.bat" (
+    echo [X] Virtual environment is corrupted. Recreating...
+    rmdir /s /q venv 2>nul
+    python -m venv venv
+    if !errorlevel! neq 0 (
+        echo [X] Failed to create virtual environment!
+        pause
+        exit /b 1
+    )
 )
 
 REM Activate virtual environment and install dependencies
 echo Installing Python packages...
 call venv\Scripts\activate.bat
-pip install --upgrade pip -q
+python -m pip install --upgrade pip -q 2>nul
 pip install -r requirements.txt -q
-
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Failed to install backend dependencies!
+    echo     Check requirements.txt for any issues.
     pause
     exit /b 1
 )
@@ -175,12 +203,17 @@ echo [4/6] Installing Frontend Dependencies...
 echo.
 
 cd /d "%PROJECT_ROOT%\frontend"
+if !errorlevel! neq 0 (
+    echo [X] Frontend directory not found!
+    pause
+    exit /b 1
+)
 
 echo Installing npm packages...
 call npm install --legacy-peer-deps
-
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Failed to install frontend dependencies!
+    echo     Check package.json for any issues.
     pause
     exit /b 1
 )
@@ -199,8 +232,8 @@ call venv\Scripts\activate.bat
 
 REM Create database tables using Python
 python -c "from app.main import Base, engine; Base.metadata.create_all(bind=engine)" 2>nul
-if %errorlevel% neq 0 (
-    echo [!] Database initialization skipped (will auto-create on first run)
+if !errorlevel! neq 0 (
+    echo [!] Database initialization skipped [will auto-create on first run]
 ) else (
     echo [OK] Database initialized
 )
@@ -220,7 +253,7 @@ echo    IMPORTANT: Edit backend\.env and add your Anthropic API key:
 echo    ANTHROPIC_API_KEY=sk-ant-xxxxx
 echo.
 echo    To start the application, run:
-echo    start-local.bat
+echo    scripts\start-local.bat
 echo.
 echo ==============================================================
 echo.

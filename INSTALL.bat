@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM BrainSpark - ONE-CLICK INSTALLER
+REM BrainSpark - ONE-CLICK INSTALLER FOR WINDOWS 11
 REM ============================================================
 REM Double-click this file to set up and run BrainSpark locally
 REM ============================================================
@@ -26,6 +26,8 @@ echo.
 
 REM Set project root directory
 set "PROJECT_ROOT=%~dp0"
+REM Remove trailing backslash if present
+if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 cd /d "%PROJECT_ROOT%"
 
 REM ============================================================
@@ -35,23 +37,31 @@ echo Checking prerequisites...
 echo.
 
 set "INSTALL_NEEDED="
+set "NODE_OK="
+set "PYTHON_OK="
 
 REM Check Node.js
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Node.js not found
     set "INSTALL_NEEDED=1"
 ) else (
-    for /f "tokens=*" %%i in ('node --version') do echo [OK] Node.js %%i
+    for /f "tokens=*" %%i in ('node --version 2^>nul') do (
+        echo [OK] Node.js %%i
+        set "NODE_OK=1"
+    )
 )
 
 REM Check Python
 where python >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo [X] Python not found
     set "INSTALL_NEEDED=1"
 ) else (
-    for /f "tokens=*" %%i in ('python --version') do echo [OK] %%i
+    for /f "tokens=*" %%i in ('python --version 2^>nul') do (
+        echo [OK] %%i
+        set "PYTHON_OK=1"
+    )
 )
 
 echo.
@@ -62,39 +72,73 @@ if defined INSTALL_NEEDED (
     echo ==============================================================
     echo.
     echo Would you like to install missing dependencies?
-    echo   1. Yes, install via winget (Windows 10/11)
+    echo   1. Yes, install via winget [Windows 10/11]
     echo   2. No, I'll install manually
     echo.
-    set /p install_choice="Enter choice (1-2): "
+    set /p "install_choice=Enter choice (1-2): "
 
     if "!install_choice!"=="1" (
         echo.
         echo Installing dependencies via winget...
-
-        where node >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo Installing Node.js LTS...
-            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
-        )
-
-        where python >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo Installing Python 3.11...
-            winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements
-        )
-
         echo.
-        echo ==============================================================
-        echo    Please restart this installer after installation completes
-        echo ==============================================================
-        pause
-        exit /b 0
+
+        REM Check if winget is available
+        where winget >nul 2>&1
+        if !errorlevel! neq 0 (
+            echo [X] winget not found! Please install App Installer from Microsoft Store.
+            echo     Or manually install Node.js and Python from their official websites.
+            pause
+            exit /b 1
+        )
+
+        set "INSTALL_PERFORMED="
+
+        if not defined NODE_OK (
+            echo Installing Node.js LTS...
+            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -h
+            if !errorlevel! equ 0 (
+                echo [OK] Node.js installed
+                set "INSTALL_PERFORMED=1"
+            ) else (
+                echo [X] Failed to install Node.js
+            )
+        )
+
+        if not defined PYTHON_OK (
+            echo Installing Python 3.11...
+            winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements -h
+            if !errorlevel! equ 0 (
+                echo [OK] Python installed
+                set "INSTALL_PERFORMED=1"
+            ) else (
+                echo [X] Failed to install Python
+            )
+        )
+
+        if defined INSTALL_PERFORMED (
+            echo.
+            echo ==============================================================
+            echo    Dependencies installed successfully!
+            echo ==============================================================
+            echo.
+            echo    IMPORTANT: You must CLOSE this window and open a NEW
+            echo    Command Prompt or PowerShell window, then run INSTALL.bat
+            echo    again for the new programs to be available.
+            echo.
+            echo    This is required because Windows needs to refresh the PATH
+            echo    environment variable after installing new programs.
+            echo.
+            echo ==============================================================
+            pause
+            exit /b 0
+        )
     ) else (
         echo.
         echo Please install the following manually:
         echo   - Node.js: https://nodejs.org/
         echo   - Python:  https://www.python.org/downloads/
         echo.
+        echo After installation, close this window and run INSTALL.bat again.
         pause
         exit /b 1
     )
@@ -104,26 +148,46 @@ REM ============================================================
 REM Install Backend
 REM ============================================================
 echo ==============================================================
-echo    Installing Backend (Python/FastAPI)
+echo    Installing Backend [Python/FastAPI]
 echo ==============================================================
 echo.
 
 cd /d "%PROJECT_ROOT%\backend"
+if !errorlevel! neq 0 (
+    echo [X] Backend directory not found!
+    pause
+    exit /b 1
+)
 
 if not exist "venv" (
     echo Creating Python virtual environment...
     python -m venv venv
+    if !errorlevel! neq 0 (
+        echo [X] Failed to create virtual environment!
+        echo     Make sure Python is properly installed.
+        pause
+        exit /b 1
+    )
 )
 
 echo Activating virtual environment...
+if not exist "venv\Scripts\activate.bat" (
+    echo [X] Virtual environment activation script not found!
+    echo     Try deleting the 'venv' folder and running installer again.
+    pause
+    exit /b 1
+)
 call venv\Scripts\activate.bat
 
-echo Installing Python packages...
-pip install --upgrade pip -q
-pip install -r requirements.txt
+echo Upgrading pip...
+python -m pip install --upgrade pip -q 2>nul
 
-if %errorlevel% neq 0 (
+echo Installing Python packages...
+pip install -r requirements.txt -q
+if !errorlevel! neq 0 (
+    echo.
     echo [X] Failed to install backend dependencies!
+    echo     Check the error messages above for details.
     pause
     exit /b 1
 )
@@ -135,17 +199,23 @@ REM ============================================================
 REM Install Frontend
 REM ============================================================
 echo ==============================================================
-echo    Installing Frontend (React/Vite)
+echo    Installing Frontend [React/Vite]
 echo ==============================================================
 echo.
 
 cd /d "%PROJECT_ROOT%\frontend"
+if !errorlevel! neq 0 (
+    echo [X] Frontend directory not found!
+    pause
+    exit /b 1
+)
 
 echo Installing npm packages...
-call npm install --legacy-peer-deps
-
-if %errorlevel% neq 0 (
+call npm install --legacy-peer-deps 2>&1
+if !errorlevel! neq 0 (
+    echo.
     echo [X] Failed to install frontend dependencies!
+    echo     Check the error messages above for details.
     pause
     exit /b 1
 )
@@ -207,15 +277,34 @@ echo Do you have an Anthropic API key to enter now?
 echo   1. Yes, enter API key
 echo   2. No, I'll add it later
 echo.
-set /p api_choice="Enter choice (1-2): "
+set /p "api_choice=Enter choice (1-2): "
 
-if "%api_choice%"=="1" (
+if "!api_choice!"=="1" (
     echo.
-    set /p api_key="Enter your Anthropic API key: "
+    set /p "api_key=Enter your Anthropic API key: "
 
-    REM Update backend .env with API key
-    powershell -Command "(Get-Content 'backend\.env') -replace 'ANTHROPIC_API_KEY=.*', 'ANTHROPIC_API_KEY=!api_key!' | Set-Content 'backend\.env'"
-    echo [OK] API key saved
+    if defined api_key (
+        REM Write API key to a temp file to avoid special character issues
+        echo !api_key!> "%TEMP%\brainspark_apikey.tmp"
+
+        REM Use PowerShell to safely update the .env file
+        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "$key = (Get-Content '%TEMP%\brainspark_apikey.tmp' -Raw).Trim(); ^
+             $envFile = '%PROJECT_ROOT%\backend\.env'; ^
+             $content = Get-Content $envFile -Raw; ^
+             $content = $content -replace 'ANTHROPIC_API_KEY=.*', ('ANTHROPIC_API_KEY=' + $key); ^
+             Set-Content $envFile $content -NoNewline"
+
+        REM Clean up temp file
+        del "%TEMP%\brainspark_apikey.tmp" 2>nul
+
+        if !errorlevel! equ 0 (
+            echo [OK] API key saved
+        ) else (
+            echo [!] Could not save API key automatically.
+            echo     Please edit backend\.env manually and set ANTHROPIC_API_KEY
+        )
+    )
 )
 
 echo.
@@ -232,27 +321,29 @@ echo.
 echo    What would you like to do?
 echo.
 echo      1. Start BrainSpark now
-echo      2. Exit (start manually later with scripts\start-local.bat)
+echo      2. Exit [start manually later with scripts\start-local.bat]
 echo.
-set /p start_choice="Enter choice (1-2): "
+set /p "start_choice=Enter choice (1-2): "
 
-if "%start_choice%"=="1" (
+if "!start_choice!"=="1" (
     echo.
     echo Starting BrainSpark...
 
     REM Start Backend
-    start "BrainSpark Backend" cmd /k "cd /d %PROJECT_ROOT%\backend && call venv\Scripts\activate.bat && echo Backend starting on http://localhost:8000 && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    start "BrainSpark Backend" cmd /k "cd /d "%PROJECT_ROOT%\backend" && call venv\Scripts\activate.bat && echo. && echo Backend starting on http://localhost:8000 && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
-    timeout /t 3 /nobreak >nul
+    echo Waiting for backend to initialize...
+    timeout /t 4 /nobreak >nul
 
     REM Start Frontend
-    start "BrainSpark Frontend" cmd /k "cd /d %PROJECT_ROOT%\frontend && echo Frontend starting on http://localhost:5173 && npm run dev"
+    start "BrainSpark Frontend" cmd /k "cd /d "%PROJECT_ROOT%\frontend" && echo. && echo Frontend starting on http://localhost:5173 && echo. && npm run dev"
 
+    echo Waiting for frontend to initialize...
     timeout /t 5 /nobreak >nul
 
     echo.
     echo Opening browser...
-    start http://localhost:5173
+    start "" "http://localhost:5173"
 
     echo.
     echo ==============================================================
