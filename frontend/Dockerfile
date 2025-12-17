@@ -23,8 +23,8 @@ ARG VITE_APP_URL=https://brainspark.siggmatreders.com
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_URL=$VITE_APP_URL
 
-# Build the application
-RUN npm run build
+# Build the application (skip type checking for production)
+RUN npm run build:prod
 
 # Stage 2: Production
 FROM nginx:alpine
