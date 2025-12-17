@@ -43,7 +43,7 @@ steps:
       - '--max-instances=5'
       - '--memory=256Mi'
       - '--cpu=1'
-      - '--port=80'
+      - '--port=8080'
     waitFor: ['push-frontend']
 
 substitutions:
