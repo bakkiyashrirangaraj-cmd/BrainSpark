@@ -30,7 +30,11 @@
       "Bash(gcloud.cmd builds log:*)",
       "Bash(gcloud.cmd builds describe:*)",
       "Bash(gcloud.cmd logging read:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gcloud.cmd beta builds log:*)",
+      "Bash(findstr:*)",
+      "Bash(Select-String -Pattern \"ERROR|error|failed|Failed\" -Context 2,2)",
+      "Bash(gcloud.cmd run services describe:*)"
     ],
     "deny": [],
     "ask": []
