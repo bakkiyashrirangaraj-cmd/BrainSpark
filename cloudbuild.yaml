@@ -14,7 +14,8 @@
 #   1. Enable Cloud Build API
 #   2. Create Artifact Registry repository 'brainspark'
 #   3. Configure secrets in Secret Manager:
-#      - anthropic-api-key
+#      - anthropic-api-key (Claude API)
+#      - grok-api-key (Grok API)
 #      - jwt-secret
 #      - database-url
 #   4. Set up VPC connector for Cloud SQL access
@@ -144,8 +145,8 @@ steps:
       - '--cpu=${_BACKEND_CPU}'
       - '--timeout=300'
       - '--concurrency=100'
-      - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},APP_URL=${_APP_URL},API_URL=${_API_URL}'
-      - '--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,JWT_SECRET=jwt-secret:latest'
+      - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},APP_URL=${_APP_URL},API_URL=${_API_URL},DEFAULT_AI_MODEL=${_DEFAULT_AI_MODEL}'
+      - '--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,GROK_API_KEY=grok-api-key:latest,JWT_SECRET=jwt-secret:latest'
     waitFor: ['push-backend']
 
   # ============================================================
@@ -281,6 +282,9 @@ substitutions:
   _FRONTEND_MAX_INSTANCES: '5'
   _FRONTEND_MEMORY: '256Mi'
   _FRONTEND_CPU: '1'
+
+  # AI Model Configuration
+  _DEFAULT_AI_MODEL: 'claude'
 
 # ============================================================
 # BUILD OPTIONS

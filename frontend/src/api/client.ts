@@ -67,6 +67,8 @@ export const chatApi = {
     message: string
     conversation_id?: string
     age_group: string
+    preferred_model?: 'claude' | 'grok'
+    enable_fallback?: boolean
   }) => apiClient.post('/chat', data),
 }
 

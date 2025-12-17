@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir)",
+      "Bash(venvScriptsactivate.bat)",
+      "Bash(pip install:*)",
+      "Bash(venv/Scripts/python.exe -m pip:*)",
+      "Bash(node --version:*)",
+      "Bash(npm install)",
+      "Bash(venvScriptspython.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000)",
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(venv/Scripts/python.exe -m uvicorn:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(python test_ai_models.py:*)",
+      "Bash(gcloud config:*)",
+      "Bash(where:*)",
+      "Bash(gcloud.cmd config:*)",
+      "Bash(gcloud.cmd projects list:*)",
+      "Bash(gcloud.cmd services enable:*)",
+      "Bash(gcloud.cmd artifacts repositories list:*)",
+      "Bash(gcloud.cmd secrets list:*)",
+      "Bash(gcloud.cmd secrets create:*)",
+      "Bash(echo:*)",
+      "Bash(gcloud.cmd secrets add-iam-policy-binding:*)",
+      "Bash(gcloud.cmd builds submit:*)",
+      "Bash(if exist \"backend\\-r\" del \"backend\\-r\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd Grok API integration and production deployment configuration\n\n- Add Grok API client as failover for Claude\n- Update backend with multi-model AI support\n- Fix bcrypt compatibility in Docker build\n- Add Cloud Run deployment scripts for Windows and Linux\n- Configure secrets in Google Secret Manager\n- Update Cloud Build with Grok API key\n- Add comprehensive deployment documentation\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

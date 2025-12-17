@@ -19,6 +19,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from passlib.context import CryptContext
 import uuid
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ============================================================
 # Configuration
@@ -28,6 +32,8 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost/brainspark")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
+    DEFAULT_AI_MODEL: str = os.getenv("DEFAULT_AI_MODEL", "claude")
     JWT_SECRET: str = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
@@ -46,6 +52,10 @@ class AgeGroup(str, Enum):
     CUBS = "cubs"           # 4-6 years
     EXPLORERS = "explorers" # 7-10 years
     MASTERS = "masters"     # 11-14 years
+
+class AIModel(str, Enum):
+    CLAUDE = "claude"
+    GROK = "grok"
 
 class User(Base):
     __tablename__ = "users"
@@ -151,6 +161,8 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     age_group: AgeGroup
+    preferred_model: Optional[AIModel] = None
+    enable_fallback: bool = True
 
 class ChatResponse(BaseModel):
     response: str
@@ -158,6 +170,7 @@ class ChatResponse(BaseModel):
     depth: int
     stars_earned: int
     achievement: Optional[str] = None
+    model_used: str = "unknown"
 
 class ChildStats(BaseModel):
     stars: int
@@ -221,33 +234,26 @@ def create_token(user_id: str, role: str) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 # ============================================================
-# AI Engine - Claude Integration
+# AI Engine - Multi-Model Integration (Claude & Grok)
 # ============================================================
 
 AGE_GROUP_PROMPTS = {
-    AgeGroup.CUBS: """You are talking to a 4-6 year old child. Use very simple words, short sentences, 
-    lots of emojis, and make everything feel magical and fun. Ask one simple question at a time. 
+    AgeGroup.CUBS: """You are talking to a 4-6 year old child. Use very simple words, short sentences,
+    lots of emojis, and make everything feel magical and fun. Ask one simple question at a time.
     Be extremely encouraging and celebrate their curiosity.""",
-    
-    AgeGroup.EXPLORERS: """You are talking to a 7-10 year old child. Use adventure metaphors, 
-    exciting examples, and build on their curiosity. Challenge them slightly but keep it fun. 
+
+    AgeGroup.EXPLORERS: """You are talking to a 7-10 year old child. Use adventure metaphors,
+    exciting examples, and build on their curiosity. Challenge them slightly but keep it fun.
     Use analogies they can relate to from everyday life.""",
-    
-    AgeGroup.MASTERS: """You are talking to an 11-14 year old. Engage them with deeper questions, 
-    introduce philosophical concepts, encourage critical thinking. Treat them as capable of 
+
+    AgeGroup.MASTERS: """You are talking to an 11-14 year old. Engage them with deeper questions,
+    introduce philosophical concepts, encourage critical thinking. Treat them as capable of
     handling complex ideas while keeping the wonder alive."""
 }
 
-async def get_ai_response(
-    topic: str,
-    message: str,
-    age_group: AgeGroup,
-    conversation_history: List[dict],
-    depth: int
-) -> str:
-    """Generate AI response using Claude API"""
-    
-    system_prompt = f"""You are BrainSpark, an AI companion designed to spark curiosity and deep thinking in children.
+def build_system_prompt(topic: str, age_group: AgeGroup, depth: int) -> str:
+    """Build the system prompt for AI models"""
+    return f"""You are BrainSpark, an AI companion designed to spark curiosity and deep thinking in children.
 
 CURRENT CONTEXT:
 - Age Group: {age_group.value}
@@ -272,11 +278,14 @@ RESPONSE FORMAT:
 - Add one fascinating fact or insight
 - End with a deeper follow-up question"""
 
-    messages = [{"role": m["role"], "content": m["content"]} for m in conversation_history]
-    messages.append({"role": "user", "content": message})
-    
-    async with httpx.AsyncClient() as client:
-        try:
+async def call_claude_api(
+    system_prompt: str,
+    messages: List[dict],
+    timeout: float = 30.0
+) -> tuple[str, bool]:
+    """Call Claude API. Returns (response_text, success)"""
+    try:
+        async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -290,13 +299,95 @@ RESPONSE FORMAT:
                     "system": system_prompt,
                     "messages": messages
                 },
-                timeout=30.0
+                timeout=timeout
             )
+            response.raise_for_status()
             data = response.json()
-            return data["content"][0]["text"]
-        except Exception as e:
-            print(f"AI Error: {e}")
-            return get_fallback_response(topic)
+            return data["content"][0]["text"], True
+    except Exception as e:
+        print(f"Claude API Error: {e}")
+        return "", False
+
+async def call_grok_api(
+    system_prompt: str,
+    messages: List[dict],
+    timeout: float = 30.0
+) -> tuple[str, bool]:
+    """Call Grok API. Returns (response_text, success)"""
+    try:
+        # Prepare messages in OpenAI format (Grok uses OpenAI-compatible API)
+        grok_messages = [{"role": "system", "content": system_prompt}]
+        grok_messages.extend(messages)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {settings.GROK_API_KEY}"
+                },
+                json={
+                    "model": "grok-2-latest",
+                    "messages": grok_messages,
+                    "max_tokens": 1000,
+                    "temperature": 0.7
+                },
+                timeout=timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"], True
+    except Exception as e:
+        print(f"Grok API Error: {e}")
+        return "", False
+
+async def get_ai_response(
+    topic: str,
+    message: str,
+    age_group: AgeGroup,
+    conversation_history: List[dict],
+    depth: int,
+    preferred_model: Optional[AIModel] = None,
+    enable_fallback: bool = True
+) -> tuple[str, str]:
+    """Generate AI response with multi-model support and failover.
+    Returns (response_text, model_used)"""
+
+    system_prompt = build_system_prompt(topic, age_group, depth)
+    messages = [{"role": m["role"], "content": m["content"]} for m in conversation_history]
+    messages.append({"role": "user", "content": message})
+
+    # Determine primary and fallback models
+    if preferred_model:
+        primary_model = preferred_model
+    else:
+        primary_model = AIModel.CLAUDE if settings.DEFAULT_AI_MODEL == "claude" else AIModel.GROK
+
+    # Try primary model
+    response_text = ""
+    model_used = "fallback"
+
+    if primary_model == AIModel.CLAUDE:
+        response_text, success = await call_claude_api(system_prompt, messages)
+        if success:
+            return response_text, "claude"
+        elif enable_fallback:
+            print("Claude failed, trying Grok as fallback...")
+            response_text, success = await call_grok_api(system_prompt, messages)
+            if success:
+                return response_text, "grok"
+    else:  # GROK
+        response_text, success = await call_grok_api(system_prompt, messages)
+        if success:
+            return response_text, "grok"
+        elif enable_fallback:
+            print("Grok failed, trying Claude as fallback...")
+            response_text, success = await call_claude_api(system_prompt, messages)
+            if success:
+                return response_text, "claude"
+
+    # If both APIs fail, return static fallback
+    return get_fallback_response(topic), "fallback"
 
 def get_fallback_response(topic: str) -> str:
     """Fallback responses when API fails"""
@@ -381,7 +472,15 @@ async def create_child(
         db.add(tp)
     
     db.commit()
-    return {"message": "Child profile created", "child_id": child_user.id}
+
+    # Generate token for child (for testing/development)
+    child_token = create_token(child_user.id, child_user.role)
+
+    return {
+        "message": "Child profile created",
+        "child_id": child_user.id,
+        "child_token": child_token  # Include token for easy access
+    }
 
 @app.get("/api/children")
 async def get_children(
@@ -434,15 +533,17 @@ async def chat(
     # Get AI response
     history = conversation.messages or []
     depth = len([m for m in history if m.get("role") == "user"])
-    
-    ai_response = await get_ai_response(
+
+    ai_response, model_used = await get_ai_response(
         topic=request.topic,
         message=request.message,
         age_group=request.age_group,
         conversation_history=history,
-        depth=depth
+        depth=depth,
+        preferred_model=request.preferred_model,
+        enable_fallback=request.enable_fallback
     )
-    
+
     # Update conversation
     new_messages = history + [
         {"role": "user", "content": request.message},
@@ -450,26 +551,27 @@ async def chat(
     ]
     conversation.messages = new_messages
     conversation.depth_reached = depth + 1
-    
+
     # Update stats
     stars_earned = 5
     achievement = None
-    
+
     if depth + 1 == 5:
         achievement = "Deep Thinker"
         stars_earned = 25
     elif depth + 1 == 10:
         achievement = "Philosophy Pro"
         stars_earned = 50
-    
+
     db.commit()
-    
+
     return ChatResponse(
         response=ai_response,
         conversation_id=conversation.id,
         depth=depth + 1,
         stars_earned=stars_earned,
-        achievement=achievement
+        achievement=achievement,
+        model_used=model_used
     )
 
 # ============================================================
