@@ -26,7 +26,11 @@
       "Bash(gcloud.cmd builds submit:*)",
       "Bash(if exist \"backend\\-r\" del \"backend\\-r\")",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nAdd Grok API integration and production deployment configuration\n\n- Add Grok API client as failover for Claude\n- Update backend with multi-model AI support\n- Fix bcrypt compatibility in Docker build\n- Add Cloud Run deployment scripts for Windows and Linux\n- Configure secrets in Google Secret Manager\n- Update Cloud Build with Grok API key\n- Add comprehensive deployment documentation\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd Grok API integration and production deployment configuration\n\n- Add Grok API client as failover for Claude\n- Update backend with multi-model AI support\n- Fix bcrypt compatibility in Docker build\n- Add Cloud Run deployment scripts for Windows and Linux\n- Configure secrets in Google Secret Manager\n- Update Cloud Build with Grok API key\n- Add comprehensive deployment documentation\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(gcloud.cmd builds log:*)",
+      "Bash(gcloud.cmd builds describe:*)",
+      "Bash(gcloud.cmd logging read:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
