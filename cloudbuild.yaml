@@ -267,9 +267,9 @@ substitutions:
   _REPO_NAME: 'brainspark'
   _ENVIRONMENT: 'prod'
 
-  # URLs
-  _APP_URL: 'https://brainspark.siggmatreders.com'
-  _API_URL: 'https://api.brainspark.siggmatreders.com'
+  # URLs - Using actual Cloud Run URLs
+  _APP_URL: 'https://brainspark-web-37t2wofhfa-el.a.run.app'
+  _API_URL: 'https://brainspark-api-37t2wofhfa-el.a.run.app'
 
   # Backend Configuration
   _BACKEND_MIN_INSTANCES: '1'
