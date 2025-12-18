@@ -657,6 +657,9 @@ export default function FullApp() {
     if (!voiceEnabled || !soundEnabled) return;
 
     try {
+      // Cancel any ongoing speech to prevent overlaps and mismatches
+      speechSynthesis.cancel();
+
       const utterance = new SpeechSynthesisUtterance(text);
 
       // Age-appropriate voice settings
@@ -971,8 +974,8 @@ export default function FullApp() {
 
         setMessages(prev => [...prev, { role: 'options', choices: followUpOptions }]);
 
-        // Move to next card (the new AI message)
-        setCurrentCardIndex(prev => prev + 1);
+        // Jump to the latest card (the new options) - we added 3 messages total
+        setCurrentCardIndex(messages.length + 2);
       } catch (err) {
         setIsTyping(false);
         setMascotExpression('excited');
@@ -983,7 +986,8 @@ export default function FullApp() {
           role: 'options',
           choices: [`Go deeper into ${selectedTopic}`, `Try a different angle`, `Connect to another topic`]
         }]);
-        setCurrentCardIndex(prev => prev + 1);
+        // Jump to the latest card - we added 2 messages in error path
+        setCurrentCardIndex(messages.length + 1);
       }
     };
 
