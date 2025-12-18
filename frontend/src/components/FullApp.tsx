@@ -3,10 +3,11 @@ import { authApi, childrenApi, chatApi } from '../api/client';
 
 // Authentication & Parent Dashboard Component
 export default function FullApp() {
-  const [screen, setScreen] = useState('landing'); // landing, login, register, parent, chat
+  const [screen, setScreen] = useState('landing'); // landing, login, register, parent, topics, chat
   const [user, setUser] = useState(null);
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
+  const [selectedTopic, setSelectedTopic] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -290,7 +291,7 @@ export default function FullApp() {
                 key={child.id}
                 onClick={() => {
                   setSelectedChild(child);
-                  setScreen('demo'); // Use demo screen as chat for now
+                  setScreen('topics'); // Go to topic selection first
                 }}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 hover:bg-white/20 transition cursor-pointer"
               >
@@ -400,6 +401,63 @@ export default function FullApp() {
     );
   };
 
+  // Topics Selection Screen
+  const TopicsScreen = () => {
+    const topics = [
+      { name: 'Space', emoji: '🌌', gradient: 'from-blue-500 to-purple-600' },
+      { name: 'Physics', emoji: '⚛️', gradient: 'from-cyan-400 to-blue-500' },
+      { name: 'Nature', emoji: '🌿', gradient: 'from-green-400 to-emerald-600' },
+      { name: 'Math', emoji: '🔢', gradient: 'from-yellow-400 to-orange-500' },
+      { name: 'Animals', emoji: '🦁', gradient: 'from-orange-400 to-red-500' },
+      { name: 'Music', emoji: '🎵', gradient: 'from-pink-400 to-purple-500' },
+      { name: 'Technology', emoji: '💻', gradient: 'from-indigo-400 to-cyan-500' },
+      { name: 'Ocean', emoji: '🌊', gradient: 'from-blue-400 to-cyan-600' },
+    ];
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-900 via-purple-900 to-black p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => setScreen('parent')}
+              className="text-white text-xl"
+            >
+              ← Back
+            </button>
+            <h2 className="text-white text-2xl font-bold">
+              Choose a Topic
+            </h2>
+            <div className="w-8"></div>
+          </div>
+
+          <div className="text-center text-white/60 mb-8">
+            What would you like to explore with {selectedChild?.name}?
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {topics.map((topic) => (
+              <div
+                key={topic.name}
+                onClick={() => {
+                  setSelectedTopic(topic.name);
+                  setScreen('demo');
+                }}
+                className={`bg-gradient-to-br ${topic.gradient} rounded-2xl p-6 hover:scale-105 transition cursor-pointer shadow-xl`}
+              >
+                <div className="text-6xl mb-3">{topic.emoji}</div>
+                <div className="text-white font-bold text-xl">{topic.name}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-white/40 bg-gradient-to-t from-black/30 to-transparent pointer-events-none">
+            © {new Date().getFullYear()} Bakkiyam Foundation. All rights reserved.
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Demo/Guest Mode - simplified chat
   const DemoScreen = () => {
     const [messages, setMessages] = useState([]);
@@ -416,7 +474,7 @@ export default function FullApp() {
 
       try {
         const response = await chatApi.sendMessage({
-          topic: 'General',
+          topic: selectedTopic || 'General',
           message: userMsg.text,
           age_group: selectedChild?.profile?.age_group || 'explorers',
           preferred_model: 'grok',
@@ -512,6 +570,7 @@ export default function FullApp() {
       {screen === 'login' && <LoginScreen />}
       {screen === 'register' && <RegisterScreen />}
       {screen === 'parent' && <ParentDashboard />}
+      {screen === 'topics' && <TopicsScreen />}
       {screen === 'demo' && <DemoScreen />}
     </div>
   );
