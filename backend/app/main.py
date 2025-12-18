@@ -94,11 +94,13 @@ class Topic(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, unique=True, nullable=False)
-    icon = Column(String)
+    emoji = Column(String)
     description = Column(String)
-    gradient = Column(String)
-    hook = Column(String)
-    min_level = Column(Integer, default=1)
+    color_gradient = Column(String)
+    starter_prompt = Column(String)
+    difficulty_base = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
 
 class TopicProgress(Base):
     __tablename__ = "topic_progress"
