@@ -1,0 +1,50 @@
+steps:
+  # Build and push backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/brainspark-backend', 'backend']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/brainspark-backend']
+
+  # Build and push frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/brainspark-frontend'
+      - '--build-arg'
+      - 'VITE_API_URL=https://brainspark-api-103751806368.asia-south1.run.app'
+      - 'frontend'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/brainspark-frontend']
+
+  # Deploy backend
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'brainspark-api'
+      - '--image=gcr.io/$PROJECT_ID/brainspark-backend'
+      - '--region=asia-south1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,GROK_API_KEY=grok-api-key:latest,JWT_SECRET=jwt-secret:latest,DATABASE_URL=database-url:latest'
+
+  # Deploy frontend
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'brainspark-web'
+      - '--image=gcr.io/$PROJECT_ID/brainspark-frontend'
+      - '--region=asia-south1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--port=8080'
+
+timeout: 1200s
