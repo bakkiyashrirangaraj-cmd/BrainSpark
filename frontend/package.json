@@ -12,17 +12,19 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.17.0",
+    "axios": "^1.6.5",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.2.0",
+    "framer-motion": "^10.18.0",
+    "lucide-react": "^0.303.0",
     "react": "^18.2.0",
+    "react-confetti": "^6.4.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
-    "framer-motion": "^10.18.0",
-    "zustand": "^4.4.7",
-    "axios": "^1.6.5",
-    "@tanstack/react-query": "^5.17.0",
-    "date-fns": "^3.2.0",
-    "lucide-react": "^0.303.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.47",

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { authApi, childrenApi, chatApi } from '../api/client';
+import { Mascot } from './Mascots';
+import confetti from 'canvas-confetti';
 
 // Knowledge nodes for constellation
 const knowledgeNodes = [
@@ -63,6 +65,9 @@ export default function FullApp() {
   const [showReward, setShowReward] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ageGroup, setAgeGroup] = useState('curious_explorers'); // wonder_cubs, curious_explorers, mind_masters
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   // Check for existing token on mount
   useEffect(() => {
@@ -557,8 +562,93 @@ export default function FullApp() {
     </div>
   );
 
+  // Text-to-speech for kids (especially Wonder Cubs)
+  const speakText = (text) => {
+    if (!voiceEnabled || !soundEnabled) return;
+
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+
+      // Age-appropriate voice settings
+      if (ageGroup === 'wonder_cubs') {
+        utterance.rate = 0.9; // Slower for young kids
+        utterance.pitch = 1.2; // Higher pitch
+      } else if (ageGroup === 'curious_explorers') {
+        utterance.rate = 1.0;
+        utterance.pitch = 1.1;
+      } else {
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+      }
+
+      speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.log('Speech synthesis not supported');
+    }
+  };
+
+  // Celebration confetti effects
+  const triggerCelebration = (type = 'default') => {
+    const celebrations = {
+      default: () => {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      },
+      star: () => {
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ['#FFD700', '#FFA500', '#FFFF00']
+        });
+      },
+      achievement: () => {
+        const duration = 2000;
+        const end = Date.now() + duration;
+        const colors = ['#FFD700', '#FFA500', '#FF69B4'];
+
+        (function frame() {
+          confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: colors
+          });
+          confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: colors
+          });
+
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        }());
+      },
+      levelUp: () => {
+        confetti({
+          particleCount: 150,
+          spread: 180,
+          origin: { y: 0.5 },
+          colors: ['#4169E1', '#1E90FF', '#00BFFF']
+        });
+      }
+    };
+
+    const celebrate = celebrations[type] || celebrations.default;
+    celebrate();
+  };
+
   // Sound effects system
   const playSound = (type) => {
+    if (!soundEnabled) return;
+
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -619,6 +709,7 @@ export default function FullApp() {
       // Award stars - with sound and celebration!
       if (newDepth % 3 === 0) {
         playSound('star');
+        triggerCelebration('star'); // Add particle effects!
         setStars(prev => prev + 1);
         setMascotExpression('celebrating');
         setShowReward(true);
@@ -643,6 +734,9 @@ export default function FullApp() {
 
         const aiMsg = { role: 'ai', text: response.data.response };
         setMessages(prev => [...prev, aiMsg]);
+
+        // Speak AI response for kids (especially Wonder Cubs)
+        speakText(response.data.response);
 
         const followUpOptions = [
           `Tell me more about that!`,
@@ -726,16 +820,21 @@ export default function FullApp() {
           </div>
         </div>
 
-        {/* Animated Mascot Character */}
+        {/* Animated Mascot Character - SVG mascots! */}
         <div className="relative z-10 flex justify-center py-4">
           <div className={`relative transition-all duration-500 ${
             mascotExpression === 'celebrating' ? 'animate-bounce' :
             mascotExpression === 'thinking' ? 'animate-pulse' :
-            'animate-float'
+            ''
           }`}>
-            <div className={`text-6xl filter drop-shadow-lg ${
-              mascotExpression === 'celebrating' ? 'scale-125' : 'scale-100'
-            } transition-transform duration-300`}>
+            <Mascot
+              ageGroup={ageGroup}
+              emotion={mascotExpression === 'celebrating' ? 'celebrating' :
+                      mascotExpression === 'thinking' ? 'thinking' : 'happy'}
+              size={140}
+            />
+            {/* Also show topic emoji */}
+            <div className="absolute -top-2 -right-2 text-3xl filter drop-shadow-lg">
               {getMascotEmoji()}
             </div>
             {mascotExpression === 'celebrating' && (
@@ -920,7 +1019,7 @@ export default function FullApp() {
 
   // Render based on screen
   return (
-    <div className="font-sans">
+    <div className={`font-sans theme-${ageGroup}`}>
       {screen === 'landing' && <LandingScreen />}
       {screen === 'login' && <LoginScreen />}
       {screen === 'register' && <RegisterScreen />}
