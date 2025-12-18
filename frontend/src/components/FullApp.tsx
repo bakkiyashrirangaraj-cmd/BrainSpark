@@ -653,8 +653,12 @@ export default function FullApp() {
   };
 
   // Text-to-speech for kids (especially Wonder Cubs)
-  const speakText = (text) => {
-    if (!voiceEnabled || !soundEnabled) return;
+  const speakText = (text, onComplete = null) => {
+    if (!voiceEnabled || !soundEnabled) {
+      // If voice is disabled but callback is provided, still call it
+      if (onComplete) onComplete();
+      return;
+    }
 
     try {
       // Cancel any ongoing speech to prevent overlaps and mismatches
@@ -674,9 +678,16 @@ export default function FullApp() {
         utterance.pitch = 1.0;
       }
 
+      // Call callback when speech completes
+      if (onComplete) {
+        utterance.onend = onComplete;
+      }
+
       speechSynthesis.speak(utterance);
     } catch (e) {
       console.log('Speech synthesis not supported');
+      // If speech fails but callback is provided, still call it
+      if (onComplete) onComplete();
     }
   };
 
@@ -906,8 +917,9 @@ export default function FullApp() {
         const aiMsg = { role: 'ai', text: response.data.response };
         setMessages(prev => [...prev, aiMsg]);
 
-        // Speak AI response for kids (especially Wonder Cubs)
-        speakText(response.data.response);
+        // First, jump to show the AI response card (messages.length + 1)
+        const aiCardIndex = messages.length + 1;
+        setCurrentCardIndex(aiCardIndex);
 
         // Detect Aha moments!
         if (detectAhaMoment(response.data.response, choiceText, newDepth)) {
@@ -974,20 +986,39 @@ export default function FullApp() {
 
         setMessages(prev => [...prev, { role: 'options', choices: followUpOptions }]);
 
-        // Jump to the latest card (the new options) - we added 3 messages total
-        setCurrentCardIndex(messages.length + 2);
+        // Speak AI response and auto-advance to options when done
+        // We added 3 messages total: user msg, AI msg, options msg
+        const optionsCardIndex = messages.length + 2;
+        speakText(response.data.response, () => {
+          // After voice completes, auto-advance to options card
+          setCurrentCardIndex(optionsCardIndex);
+          playSound('whoosh');
+        });
       } catch (err) {
         setIsTyping(false);
         setMascotExpression('excited');
-        setMessages(prev => [...prev, {
+
+        const errorAiMsg = {
           role: 'ai',
           text: "That's a fascinating thought! Let me think deeper... Which direction should we explore?"
-        }, {
+        };
+        const errorOptions = {
           role: 'options',
           choices: [`Go deeper into ${selectedTopic}`, `Try a different angle`, `Connect to another topic`]
-        }]);
-        // Jump to the latest card - we added 2 messages in error path
-        setCurrentCardIndex(messages.length + 1);
+        };
+
+        setMessages(prev => [...prev, errorAiMsg, errorOptions]);
+
+        // Show AI error message first (messages.length + 1)
+        const errorAiCardIndex = messages.length + 1;
+        setCurrentCardIndex(errorAiCardIndex);
+
+        // Speak error message and auto-advance to options when done
+        const errorOptionsCardIndex = messages.length + 2;
+        speakText(errorAiMsg.text, () => {
+          setCurrentCardIndex(errorOptionsCardIndex);
+          playSound('whoosh');
+        });
       }
     };
 
