@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { chatApi } from '../api/client';
 
 // ============================================================
 // CONFIGURATION - Change these for deployment
@@ -6,10 +7,6 @@ import { useState, useEffect, useRef } from 'react';
 const CONFIG = {
   APP_NAME: 'BrainSpark',
   VERSION: '1.0.0',
-  API_ENDPOINT: 'https://api.anthropic.com/v1/messages',
-  MODEL: 'claude-sonnet-4-20250514',
-  // For production: Use environment variable or backend proxy
-  // BACKEND_URL: process.env.REACT_APP_API_URL || 'http://localhost:8000'
 };
 
 // ============================================================
@@ -300,35 +297,18 @@ export default function BrainSpark() {
     return { ...currentStats, streak: newStreak, lastActiveDate: today };
   };
 
-  // Claude API call
+  // Backend API call
   const sendToClaude = async (userMessage) => {
-    const systemPrompt = `${ageGroup.systemPrompt}
-
-CURRENT CONTEXT:
-- Topic: ${currentTopic.name}
-- Conversation Depth: ${stats.currentDepth} questions into this conversation
-- Child's total questions ever: ${stats.totalQuestions}
-
-Remember: Your goal is to spark genuine curiosity and make them WANT to keep exploring!`;
-
-    const conversationHistory = messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
-
     try {
-      const response = await fetch(CONFIG.API_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: CONFIG.MODEL,
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [...conversationHistory, { role: 'user', content: userMessage }]
-        })
+      const response = await chatApi.sendMessage({
+        topic: currentTopic.name,
+        message: userMessage,
+        age_group: ageGroup.id,
+        preferred_model: 'grok',
+        enable_fallback: true
       });
 
-      const data = await response.json();
-      return data.content?.[0]?.text || getFallbackResponse();
+      return response.data.response || getFallbackResponse();
     } catch (error) {
       console.error('API Error:', error);
       return getFallbackResponse();
