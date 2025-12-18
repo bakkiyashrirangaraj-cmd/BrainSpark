@@ -430,8 +430,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     
-    token = create_token(user.id, user.role)
-    return TokenResponse(access_token=token, user_id=user.id, role=user.role)
+    token = create_token(str(user.id), user.role)
+    return TokenResponse(access_token=token, user_id=str(user.id), role=user.role)
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
@@ -439,9 +439,9 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not pwd_context.verify(credentials.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    token = create_token(user.id, user.role)
-    return TokenResponse(access_token=token, user_id=user.id, role=user.role)
+
+    token = create_token(str(user.id), user.role)
+    return TokenResponse(access_token=token, user_id=str(user.id), role=user.role)
 
 # ============================================================
 # API Endpoints - Child Management
