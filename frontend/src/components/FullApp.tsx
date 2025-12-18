@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react';
 import { authApi, childrenApi, chatApi } from '../api/client';
 import { Mascot } from './Mascots';
+import { KnowledgeConstellation } from './KnowledgeConstellation';
 import confetti from 'canvas-confetti';
 
 // Knowledge nodes for constellation
 const knowledgeNodes = [
-  { id: 1, name: 'Space', emoji: '🌌', x: 50, y: 20, connections: [2, 3], unlocked: true, level: 1 },
-  { id: 2, name: 'Physics', emoji: '⚛️', x: 30, y: 40, connections: [1, 4], unlocked: true, level: 1 },
-  { id: 3, name: 'Nature', emoji: '🌿', x: 70, y: 35, connections: [1, 5], unlocked: true, level: 1 },
-  { id: 4, name: 'Math', emoji: '🔢', x: 20, y: 65, connections: [2, 6], unlocked: true, level: 1 },
-  { id: 5, name: 'Animals', emoji: '🦁', x: 80, y: 60, connections: [3, 6], unlocked: true, level: 1 },
-  { id: 6, name: 'Music', emoji: '🎵', x: 50, y: 80, connections: [4, 5], unlocked: true, level: 1 },
-  { id: 7, name: 'Technology', emoji: '💻', x: 15, y: 25, connections: [2], unlocked: true, level: 1 },
-  { id: 8, name: 'Ocean', emoji: '🌊', x: 85, y: 25, connections: [3], unlocked: true, level: 1 }
+  { id: 1, name: 'Space', emoji: '🌌', x: 50, y: 20, connections: [2, 3], unlocked: true, depth: 0 },
+  { id: 2, name: 'Physics', emoji: '⚛️', x: 30, y: 40, connections: [1, 4], unlocked: true, depth: 0 },
+  { id: 3, name: 'Nature', emoji: '🌿', x: 70, y: 35, connections: [1, 5], unlocked: true, depth: 0 },
+  { id: 4, name: 'Math', emoji: '🔢', x: 20, y: 65, connections: [2, 6], unlocked: false, depth: 0 },
+  { id: 5, name: 'Animals', emoji: '🦁', x: 80, y: 60, connections: [3, 6], unlocked: false, depth: 0 },
+  { id: 6, name: 'Music', emoji: '🎵', x: 50, y: 80, connections: [4, 5], unlocked: false, depth: 0 },
+  { id: 7, name: 'Technology', emoji: '💻', x: 15, y: 25, connections: [2], unlocked: false, depth: 0 },
+  { id: 8, name: 'Ocean', emoji: '🌊', x: 85, y: 25, connections: [3], unlocked: false, depth: 0 }
 ];
 
 // Sample AI-initiated conversations
@@ -69,6 +70,12 @@ export default function FullApp() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
+  // Progress tracking for constellation
+  const [userProgress, setUserProgress] = useState({});
+  const [achievements, setAchievements] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [ahaCount, setAhaCount] = useState(0);
+
   // Check for existing token on mount
   useEffect(() => {
     const token = localStorage.getItem('brainspark_token');
@@ -77,6 +84,32 @@ export default function FullApp() {
       setScreen('parent');
     }
   }, []);
+
+  // Initialize user progress when child is selected
+  useEffect(() => {
+    if (selectedChild) {
+      // Initialize progress from child profile or default to unlocking first 3 nodes
+      const initialProgress = {};
+      knowledgeNodes.forEach(node => {
+        initialProgress[node.id] = {
+          unlocked: node.id <= 3, // First 3 nodes unlocked by default
+          depth: 0
+        };
+      });
+      setUserProgress(initialProgress);
+
+      // Set age group and streak from child profile
+      if (selectedChild.profile) {
+        const ageMapping = {
+          'cubs': 'wonder_cubs',
+          'explorers': 'curious_explorers',
+          'masters': 'mind_masters'
+        };
+        setAgeGroup(ageMapping[selectedChild.profile.age_group] || 'curious_explorers');
+        setStreak(selectedChild.profile.streak || 0);
+      }
+    }
+  }, [selectedChild]);
 
   const loadChildren = async () => {
     try {
@@ -460,107 +493,87 @@ export default function FullApp() {
     );
   };
 
-  // Knowledge Constellation Screen
-  const ConstellationScreen = () => (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-900 via-purple-900 to-black p-4 relative overflow-hidden">
-      {/* Animated stars background */}
-      <div className="absolute inset-0">
-        {Array.from({ length: 50 }, (_, i) => ({
-          id: i,
-          left: Math.random() * 100,
-          top: Math.random() * 100,
-          size: Math.random() * 3 + 1,
-        })).map(star => (
-          <div
-            key={star.id}
-            className="absolute rounded-full bg-white animate-pulse"
-            style={{
-              left: `${star.left}%`,
-              top: `${star.top}%`,
-              width: star.size,
-              height: star.size,
-              opacity: 0.6
-            }}
-          />
-        ))}
-      </div>
+  // Knowledge Constellation Screen - Interactive Star Map
+  const ConstellationScreen = () => {
+    const handleNodeClick = (node) => {
+      playSound('tap');
+      setSelectedTopic(node.name);
+      setMessages(sampleConversations[node.name] || []);
+      setDepth(userProgress[node.id]?.depth || 0);
+      setScreen('learning');
+    };
 
-      <div className="relative z-10">
-        <div className="flex justify-between items-center mb-4">
-          <button onClick={() => setScreen('parent')} className="text-white">← Back</button>
-          <div className="flex gap-2">
-            <span className="bg-white/10 px-3 py-1 rounded-full text-yellow-300 text-sm">⭐ {stars}</span>
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-900 via-purple-900 to-black p-4 relative">
+        {/* Header with stats */}
+        <div className="relative z-10 mb-4">
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => {
+                playSound('tap');
+                setScreen('parent');
+              }}
+              className="text-white hover:text-yellow-400 transition flex items-center gap-2"
+            >
+              ← Back
+            </button>
+            <div className="flex items-center gap-3">
+              {/* Streak Counter */}
+              {streak > 0 && (
+                <div className="bg-orange-500/30 border-2 border-orange-400 px-3 py-1 rounded-full flex items-center gap-2">
+                  <span className="text-2xl">🔥</span>
+                  <div className="text-white">
+                    <span className="font-bold">{streak}</span>
+                    <span className="text-xs ml-1">day streak</span>
+                  </div>
+                </div>
+              )}
+              {/* Stars Counter */}
+              <div className="bg-yellow-500/30 border-2 border-yellow-400 px-3 py-1 rounded-full flex items-center gap-2">
+                <span className="text-2xl">⭐</span>
+                <span className="text-white font-bold">{stars}</span>
+              </div>
+            </div>
           </div>
+
+          <div className="text-center mb-2">
+            <h2 className="text-3xl font-bold text-white mb-1">
+              {selectedChild?.name}'s Knowledge Universe
+            </h2>
+            <p className="text-purple-200 text-sm">Tap a glowing star to explore! Unlock new topics by going deeper.</p>
+          </div>
+
+          {/* Achievement badges display */}
+          {achievements.length > 0 && (
+            <div className="flex justify-center gap-2 mt-3 flex-wrap">
+              {achievements.map((achievement, idx) => (
+                <div
+                  key={idx}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 rounded-full text-white text-sm font-semibold shadow-lg animate-bounce"
+                  style={{ animationDelay: `${idx * 0.1}s` }}
+                >
+                  {achievement.icon} {achievement.name}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <h2 className="text-2xl font-bold text-white text-center mb-1">
-          {selectedChild?.name}'s Knowledge Universe
-        </h2>
-        <p className="text-purple-200 text-center text-sm mb-4">Tap a star to explore deeper!</p>
-
-        {/* Constellation visualization */}
-        <div className="relative h-96 bg-black/30 rounded-3xl backdrop-blur border border-white/10 overflow-hidden">
-          {/* Connection lines */}
-          <svg className="absolute inset-0 w-full h-full">
-            {knowledgeNodes.map(node =>
-              node.connections.map(connId => {
-                const target = knowledgeNodes.find(n => n.id === connId);
-                if (!target || target.id < node.id) return null;
-                return (
-                  <line
-                    key={`${node.id}-${connId}`}
-                    x1={`${node.x}%`} y1={`${node.y}%`}
-                    x2={`${target.x}%`} y2={`${target.y}%`}
-                    stroke={node.unlocked && target.unlocked ? "rgba(147,51,234,0.5)" : "rgba(255,255,255,0.1)"}
-                    strokeWidth="2"
-                  />
-                );
-              })
-            )}
-          </svg>
-
-          {/* Nodes */}
-          {knowledgeNodes.map(node => (
-            <button
-              key={node.id}
-              onClick={() => {
-                if (node.unlocked) {
-                  setSelectedTopic(node.name);
-                  setMessages(sampleConversations[node.name] || []);
-                  setDepth(0);
-                  setScreen('learning');
-                }
-              }}
-              className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all ${
-                node.unlocked ? 'hover:scale-110' : 'opacity-40'
-              }`}
-              style={{ left: `${node.x}%`, top: `${node.y}%` }}
-            >
-              <div className={`relative ${node.unlocked ? 'animate-pulse' : ''}`}>
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${
-                  node.unlocked
-                    ? 'bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50'
-                    : 'bg-gray-700'
-                }`}>
-                  {node.emoji}
-                </div>
-                <div className="text-white text-xs text-center mt-1 font-medium">{node.name}</div>
-                {node.unlocked && (
-                  <div className="absolute -top-1 -right-1 bg-yellow-400 text-black text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                    {node.level}
-                  </div>
-                )}
-              </div>
-            </button>
-          ))}
+        {/* Interactive Constellation Component */}
+        <div className="relative z-10">
+          <KnowledgeConstellation
+            nodes={knowledgeNodes}
+            onNodeClick={handleNodeClick}
+            userProgress={userProgress}
+          />
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-white/40 bg-gradient-to-t from-black/30 to-transparent pointer-events-none">
           © {new Date().getFullYear()} Bakkiyam Foundation. All rights reserved.
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Text-to-speech for kids (especially Wonder Cubs)
   const speakText = (text) => {
@@ -661,7 +674,8 @@ export default function FullApp() {
         tap: { frequency: 800, duration: 0.1 },
         correct: { frequency: 523.25, duration: 0.3 },
         star: { frequency: 659.25, duration: 0.4 },
-        whoosh: { frequency: 200, duration: 0.2 }
+        whoosh: { frequency: 200, duration: 0.2 },
+        aha: { frequency: 880, duration: 0.5 }
       };
 
       const sound = sounds[type] || sounds.tap;
@@ -673,6 +687,60 @@ export default function FullApp() {
       oscillator.stop(audioContext.currentTime + sound.duration);
     } catch (e) {
       console.log('Audio not supported');
+    }
+  };
+
+  // Aha Moment Detection - Detects breakthrough understanding moments
+  const detectAhaMoment = (aiResponse, userMessage, conversationDepth) => {
+    // Keywords that indicate understanding breakthrough
+    const ahaKeywords = [
+      'exactly', 'that\'s right', 'you figured it out', 'brilliant',
+      'perfect', 'you got it', 'well done', 'amazing insight',
+      'you\'re absolutely right', 'spot on', 'incredible',
+      'you understand', 'breakthrough', 'wow'
+    ];
+
+    const responseLower = aiResponse.toLowerCase();
+    const hasAhaKeyword = ahaKeywords.some(keyword => responseLower.includes(keyword));
+
+    // Also detect if they've gone deep (depth > 5) and getting positive feedback
+    const isDeepConversation = conversationDepth > 5;
+    const hasPositiveFeedback = hasAhaKeyword || responseLower.includes('great') || responseLower.includes('excellent');
+
+    if ((hasAhaKeyword && conversationDepth > 2) || (isDeepConversation && hasPositiveFeedback)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Trigger Aha moment celebration
+  const triggerAhaMoment = () => {
+    playSound('aha');
+    triggerCelebration('achievement');
+    setAhaCount(prev => prev + 1);
+
+    // Add achievement if this is their first, 5th, or 10th Aha moment
+    const nextCount = ahaCount + 1;
+    if (nextCount === 1) {
+      const newAchievement = { icon: '💡', name: 'First Aha Moment!' };
+      setAchievements(prev => [...prev, newAchievement]);
+      // Auto-clear after 5 seconds
+      setTimeout(() => {
+        setAchievements(prev => prev.filter(a => a !== newAchievement));
+      }, 5000);
+    } else if (nextCount === 5) {
+      const newAchievement = { icon: '🌟', name: 'Insight Master!' };
+      setAchievements(prev => [...prev, newAchievement]);
+      setTimeout(() => {
+        setAchievements(prev => prev.filter(a => a !== newAchievement));
+      }, 5000);
+    } else if (nextCount === 10) {
+      const newAchievement = { icon: '🎓', name: 'Genius Thinker!' };
+      setAchievements(prev => [...prev, newAchievement]);
+      setTimeout(() => {
+        setAchievements(prev => prev.filter(a => a !== newAchievement));
+      }, 5000);
     }
   };
 
@@ -737,6 +805,50 @@ export default function FullApp() {
 
         // Speak AI response for kids (especially Wonder Cubs)
         speakText(response.data.response);
+
+        // Detect Aha moments!
+        if (detectAhaMoment(response.data.response, choiceText, newDepth)) {
+          setTimeout(() => triggerAhaMoment(), 500);
+        }
+
+        // Update user progress with new depth for current topic
+        const currentNode = knowledgeNodes.find(n => n.name === selectedTopic);
+        if (currentNode) {
+          setUserProgress(prev => ({
+            ...prev,
+            [currentNode.id]: {
+              unlocked: true,
+              depth: newDepth
+            }
+          }));
+
+          // Unlock new topics at depth milestones (every 5 levels)
+          if (newDepth % 5 === 0 && newDepth > 0) {
+            const lockedNodes = knowledgeNodes.filter(node => !userProgress[node.id]?.unlocked);
+            if (lockedNodes.length > 0) {
+              // Unlock a random locked node
+              const randomNode = lockedNodes[Math.floor(Math.random() * lockedNodes.length)];
+              setUserProgress(prev => ({
+                ...prev,
+                [randomNode.id]: {
+                  unlocked: true,
+                  depth: 0
+                }
+              }));
+
+              // Show unlocked notification
+              const newAchievement = {
+                icon: randomNode.emoji,
+                name: `${randomNode.name} Unlocked!`
+              };
+              setAchievements(prev => [...prev, newAchievement]);
+              triggerCelebration('levelUp');
+              setTimeout(() => {
+                setAchievements(prev => prev.filter(a => a !== newAchievement));
+              }, 5000);
+            }
+          }
+        }
 
         const followUpOptions = [
           `Tell me more about that!`,

@@ -649,6 +649,252 @@ async def get_child_stats(
     )
 
 # ============================================================
+# API Endpoints - Progress Tracking
+# ============================================================
+
+class ProgressUpdate(BaseModel):
+    topic_id: int
+    depth: int
+    unlocked: bool = True
+
+@app.get("/api/progress/{child_id}")
+async def get_progress(
+    child_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Get knowledge constellation progress for a child"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    # Get all topic progress
+    progress = {}
+    for tp in profile.topic_progress:
+        progress[tp.topic_id] = {
+            "unlocked": tp.unlocked,
+            "depth": tp.max_depth_reached,
+            "questions_asked": tp.questions_asked,
+            "level": tp.level
+        }
+
+    return {
+        "progress": progress,
+        "stars": profile.stars,
+        "achievements": profile.achievements or [],
+        "streak": profile.streak
+    }
+
+@app.post("/api/progress/{child_id}/update")
+async def update_progress(
+    child_id: str,
+    update: ProgressUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Update progress for a specific topic"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    # Find or create topic progress
+    tp = db.query(TopicProgress).filter(
+        TopicProgress.child_id == profile.id,
+        TopicProgress.topic_id == str(update.topic_id)
+    ).first()
+
+    if not tp:
+        tp = TopicProgress(
+            child_id=profile.id,
+            topic_id=str(update.topic_id),
+            unlocked=update.unlocked,
+            max_depth_reached=update.depth
+        )
+        db.add(tp)
+    else:
+        tp.unlocked = update.unlocked
+        if update.depth > tp.max_depth_reached:
+            tp.max_depth_reached = update.depth
+        tp.last_visited = datetime.utcnow()
+
+    db.commit()
+
+    return {"message": "Progress updated successfully"}
+
+# ============================================================
+# API Endpoints - Streak Tracking
+# ============================================================
+
+@app.get("/api/streak/{child_id}")
+async def get_streak(
+    child_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Get current streak for a child"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    # Check if streak should be updated or reset
+    last_active = profile.last_active
+    now = datetime.utcnow()
+
+    if last_active:
+        days_since = (now - last_active).days
+        if days_since == 1:
+            # Visited yesterday, increment streak
+            profile.streak += 1
+            profile.last_active = now
+            db.commit()
+        elif days_since > 1:
+            # Missed a day, reset streak
+            profile.streak = 1
+            profile.last_active = now
+            db.commit()
+
+    return {
+        "streak": profile.streak,
+        "last_active": profile.last_active,
+        "stars": profile.stars
+    }
+
+@app.post("/api/streak/{child_id}/check-in")
+async def streak_check_in(
+    child_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Check in for daily streak (call when child starts learning)"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    last_active = profile.last_active
+    now = datetime.utcnow()
+
+    # Check if already checked in today
+    if last_active and (now - last_active).days == 0:
+        return {
+            "message": "Already checked in today",
+            "streak": profile.streak,
+            "bonus_awarded": False
+        }
+
+    # Calculate days since last check-in
+    days_since = (now - last_active).days if last_active else 0
+
+    if days_since == 1:
+        # Consecutive day - increment streak
+        profile.streak += 1
+        bonus_stars = 5 + (profile.streak // 7) * 10  # Bonus every 7 days
+        profile.stars += bonus_stars
+        profile.last_active = now
+        db.commit()
+
+        return {
+            "message": "Streak continued!",
+            "streak": profile.streak,
+            "bonus_stars": bonus_stars,
+            "bonus_awarded": True
+        }
+    elif days_since > 1:
+        # Streak broken - reset
+        profile.streak = 1
+        profile.last_active = now
+        db.commit()
+
+        return {
+            "message": "Streak reset. Keep learning every day!",
+            "streak": 1,
+            "bonus_awarded": False
+        }
+    else:
+        # First time
+        profile.streak = 1
+        profile.last_active = now
+        db.commit()
+
+        return {
+            "message": "Streak started!",
+            "streak": 1,
+            "bonus_awarded": False
+        }
+
+# ============================================================
+# API Endpoints - Achievement System
+# ============================================================
+
+class AchievementUnlock(BaseModel):
+    achievement_id: str
+    name: str
+    icon: str
+
+@app.get("/api/achievements/{child_id}")
+async def get_achievements(
+    child_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Get all unlocked achievements for a child"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    return {
+        "achievements": profile.achievements or [],
+        "total_stars": profile.stars,
+        "streak": profile.streak
+    }
+
+@app.post("/api/achievements/{child_id}/unlock")
+async def unlock_achievement(
+    child_id: str,
+    achievement: AchievementUnlock,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_token)
+):
+    """Unlock a new achievement"""
+    profile = db.query(ChildProfile).filter(ChildProfile.user_id == child_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    # Get current achievements
+    current_achievements = profile.achievements or []
+
+    # Check if already unlocked
+    if any(a.get("id") == achievement.achievement_id for a in current_achievements):
+        return {"message": "Achievement already unlocked"}
+
+    # Add new achievement
+    new_achievement = {
+        "id": achievement.achievement_id,
+        "name": achievement.name,
+        "icon": achievement.icon,
+        "unlocked_at": datetime.utcnow().isoformat()
+    }
+    current_achievements.append(new_achievement)
+    profile.achievements = current_achievements
+
+    # Award bonus stars based on achievement
+    bonus_stars = 10  # Default bonus
+    if "first" in achievement.achievement_id.lower():
+        bonus_stars = 5
+    elif "master" in achievement.achievement_id.lower():
+        bonus_stars = 25
+    elif "genius" in achievement.achievement_id.lower():
+        bonus_stars = 50
+
+    profile.stars += bonus_stars
+    db.commit()
+
+    return {
+        "message": "Achievement unlocked!",
+        "bonus_stars": bonus_stars,
+        "total_stars": profile.stars
+    }
+
+# ============================================================
 # Health Check
 # ============================================================
 
