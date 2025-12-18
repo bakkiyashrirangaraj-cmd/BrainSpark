@@ -41,6 +41,7 @@ steps:
       - '--memory=1Gi'
       - '--cpu=2'
       - '--timeout=300'
+      - '--add-cloudsql-instances=${PROJECT_ID}:${_REGION}:brainspark-db'
       - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},DEFAULT_AI_MODEL=${_DEFAULT_AI_MODEL}'
       - '--update-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,GROK_API_KEY=grok-api-key:latest,JWT_SECRET=jwt-secret:latest,DATABASE_URL=database-url:latest'
     waitFor: ['push-backend']
