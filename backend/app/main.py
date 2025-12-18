@@ -202,8 +202,14 @@ app.add_middleware(
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
-# Redis for caching
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+# Redis for caching (optional - lazy connection)
+redis_client = None
+try:
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    redis_client.ping()  # Test connection
+except Exception as e:
+    print(f"Warning: Redis not available: {e}. Caching disabled.")
+    redis_client = None
 
 # ============================================================
 # Dependencies
