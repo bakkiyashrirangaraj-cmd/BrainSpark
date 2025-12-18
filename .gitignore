@@ -139,3 +139,5 @@ tmp/
 temp/
 *.tmp
 *.temp
+TEST_RESULTS.md
+ERROR
