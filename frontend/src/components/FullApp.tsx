@@ -810,6 +810,41 @@ export default function FullApp() {
             ← Back
           </button>
           <div className="flex items-center gap-3">
+            {/* Voice Control Button */}
+            <button
+              onClick={() => {
+                setVoiceEnabled(!voiceEnabled);
+                playSound('tap');
+              }}
+              className={`px-3 py-2 rounded-full text-sm flex items-center gap-2 transition-all ${
+                voiceEnabled
+                  ? 'bg-green-500/30 border-2 border-green-400 text-green-200'
+                  : 'bg-gray-500/30 border-2 border-gray-400 text-gray-300'
+              }`}
+              title={voiceEnabled ? 'Voice ON' : 'Voice OFF'}
+            >
+              <span className="text-xl">{voiceEnabled ? '🔊' : '🔇'}</span>
+              <span className="font-semibold hidden sm:inline">Voice</span>
+            </button>
+
+            {/* Sound/Music Control Button */}
+            <button
+              onClick={() => {
+                const newState = !soundEnabled;
+                setSoundEnabled(newState);
+                if (newState) playSound('tap');
+              }}
+              className={`px-3 py-2 rounded-full text-sm flex items-center gap-2 transition-all ${
+                soundEnabled
+                  ? 'bg-blue-500/30 border-2 border-blue-400 text-blue-200'
+                  : 'bg-gray-500/30 border-2 border-gray-400 text-gray-300'
+              }`}
+              title={soundEnabled ? 'Sound ON' : 'Sound OFF'}
+            >
+              <span className="text-xl">{soundEnabled ? '🎵' : '🔕'}</span>
+              <span className="font-semibold hidden sm:inline">Sound</span>
+            </button>
+
             <div className="bg-purple-500/30 px-3 py-1 rounded-full text-white text-sm flex items-center gap-1">
               <span className="text-purple-300">Depth</span>
               <span className="font-bold text-yellow-300">{depth}</span>
@@ -820,31 +855,52 @@ export default function FullApp() {
           </div>
         </div>
 
-        {/* Animated Mascot Character - SVG mascots! */}
-        <div className="relative z-10 flex justify-center py-4">
+        {/* Animated Mascot Character - SVG mascots! PROMINENT DISPLAY */}
+        <div className="relative z-10 flex justify-center py-6 bg-gradient-to-b from-purple-900/30 to-transparent">
+          {/* Glowing spotlight effect behind mascot */}
+          <div className="absolute inset-0 flex justify-center items-center">
+            <div className="w-64 h-64 bg-gradient-radial from-yellow-400/20 via-purple-500/10 to-transparent rounded-full blur-3xl animate-pulse"></div>
+          </div>
+
           <div className={`relative transition-all duration-500 ${
-            mascotExpression === 'celebrating' ? 'animate-bounce' :
+            mascotExpression === 'celebrating' ? 'animate-bounce scale-110' :
             mascotExpression === 'thinking' ? 'animate-pulse' :
-            ''
+            'hover:scale-105'
           }`}>
+            {/* Pulsing ring around mascot */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-48 h-48 border-4 border-yellow-400/30 rounded-full animate-ping"></div>
+            </div>
+
             <Mascot
               ageGroup={ageGroup}
               emotion={mascotExpression === 'celebrating' ? 'celebrating' :
                       mascotExpression === 'thinking' ? 'thinking' : 'happy'}
-              size={140}
+              size={160}
             />
-            {/* Also show topic emoji */}
-            <div className="absolute -top-2 -right-2 text-3xl filter drop-shadow-lg">
+
+            {/* Topic emoji badge with glow */}
+            <div className="absolute -top-4 -right-4 text-4xl filter drop-shadow-2xl bg-purple-500/40 rounded-full p-3 border-4 border-yellow-400 animate-bounce">
               {getMascotEmoji()}
             </div>
+
+            {/* Status indicator bubble */}
+            <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-xl border-2 border-purple-400">
+              <span className="text-sm font-bold text-purple-900">
+                {mascotExpression === 'celebrating' ? '🎉 Amazing!' :
+                 mascotExpression === 'thinking' ? '🤔 Thinking...' :
+                 '✨ Ready to learn!'}
+              </span>
+            </div>
+
             {mascotExpression === 'celebrating' && (
               <div className="absolute inset-0 flex items-center justify-center">
-                {[...Array(8)].map((_, i) => (
+                {[...Array(12)].map((_, i) => (
                   <div
                     key={i}
-                    className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping"
+                    className="absolute w-3 h-3 bg-yellow-400 rounded-full animate-ping shadow-lg shadow-yellow-400"
                     style={{
-                      transform: `rotate(${i * 45}deg) translateY(-40px)`,
+                      transform: `rotate(${i * 30}deg) translateY(-60px)`,
                       animationDelay: `${i * 0.1}s`
                     }}
                   />
