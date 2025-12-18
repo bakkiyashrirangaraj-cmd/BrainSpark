@@ -54,7 +54,8 @@
       "Bash(gcloud.cmd builds list:*)",
       "Bash(gcloud.cmd run services list:*)",
       "Bash(npm install:*)",
-      "Bash(git filter-branch:*)"
+      "Bash(git filter-branch:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
