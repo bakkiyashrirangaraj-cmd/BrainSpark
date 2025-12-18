@@ -760,13 +760,18 @@ export default function BrainSpark() {
           onClose={() => setShowAchievement(null)}
         />
       )}
-      
+
       {screen === 'landing' && <LandingScreen />}
       {screen === 'ageSelect' && <AgeSelectScreen />}
       {screen === 'constellation' && <ConstellationScreen />}
       {screen === 'chat' && <ChatScreen />}
       {screen === 'parent' && <ParentDashboard />}
       {screen === 'achievements' && <AchievementsScreen />}
+
+      {/* Copyright Footer */}
+      <div className="fixed bottom-0 left-0 right-0 py-2 text-center text-xs text-white/40 bg-gradient-to-t from-black/30 to-transparent pointer-events-none">
+        © {new Date().getFullYear()} Bakkiyam Foundation. All rights reserved.
+      </div>
     </div>
   );
 }

@@ -503,35 +503,46 @@ async def get_children(
 # API Endpoints - Chat & Learning
 # ============================================================
 
+def get_optional_token(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))):
+    """Optional authentication - returns user if token exists, None otherwise"""
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return payload
+    except:
+        return None
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(verify_token)
+    current_user: dict = Depends(get_optional_token)
 ):
-    """Send a message and get AI response"""
-    
+    """Send a message and get AI response (works for both authenticated and guest users)"""
+
     # Get or create conversation
+    conversation = None
+    child_profile = None
+
     if request.conversation_id:
         conversation = db.query(Conversation).filter(Conversation.id == request.conversation_id).first()
-    else:
-        # Get child profile
+    elif current_user:
+        # Authenticated user - get child profile
         user = db.query(User).filter(User.id == current_user["user_id"]).first()
-        child_profile = user.child_profile if user.role == "child" else None
-        
-        if not child_profile:
-            raise HTTPException(status_code=400, detail="No child profile found")
-        
-        conversation = Conversation(
-            child_id=child_profile.id,
-            topic=request.topic,
-            messages=[]
-        )
-        db.add(conversation)
-        db.flush()
-    
-    # Get AI response
-    history = conversation.messages or []
+        child_profile = user.child_profile if user and user.role == "child" else None
+
+        if child_profile:
+            conversation = Conversation(
+                child_id=child_profile.id,
+                topic=request.topic,
+                messages=[]
+            )
+            db.add(conversation)
+            db.flush()
+
+    # For guest users or when no conversation, use in-memory tracking
+    history = conversation.messages if conversation else []
     depth = len([m for m in history if m.get("role") == "user"])
 
     ai_response, model_used = await get_ai_response(
@@ -544,13 +555,15 @@ async def chat(
         enable_fallback=request.enable_fallback
     )
 
-    # Update conversation
-    new_messages = history + [
-        {"role": "user", "content": request.message},
-        {"role": "assistant", "content": ai_response}
-    ]
-    conversation.messages = new_messages
-    conversation.depth_reached = depth + 1
+    # Update conversation if exists
+    if conversation:
+        new_messages = history + [
+            {"role": "user", "content": request.message},
+            {"role": "assistant", "content": ai_response}
+        ]
+        conversation.messages = new_messages
+        conversation.depth_reached = depth + 1
+        db.commit()
 
     # Update stats
     stars_earned = 5
@@ -563,11 +576,9 @@ async def chat(
         achievement = "Philosophy Pro"
         stars_earned = 50
 
-    db.commit()
-
     return ChatResponse(
         response=ai_response,
-        conversation_id=conversation.id,
+        conversation_id=conversation.id if conversation else "guest",
         depth=depth + 1,
         stars_earned=stars_earned,
         achievement=achievement,
