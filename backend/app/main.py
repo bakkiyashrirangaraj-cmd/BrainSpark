@@ -31,10 +31,10 @@ load_dotenv()
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost/brainspark")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
-    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "").strip()
     DEFAULT_AI_MODEL: str = os.getenv("DEFAULT_AI_MODEL", "claude")
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "your-secret-key-change-in-production").strip()
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 
@@ -493,11 +493,11 @@ async def create_child(
     db.commit()
 
     # Generate token for child (for testing/development)
-    child_token = create_token(child_user.id, child_user.role)
+    child_token = create_token(str(child_user.id), child_user.role)
 
     return {
         "message": "Child profile created",
-        "child_id": child_user.id,
+        "child_id": str(child_user.id),
         "child_token": child_token  # Include token for easy access
     }
 
