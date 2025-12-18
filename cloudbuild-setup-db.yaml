@@ -1,0 +1,19 @@
+# Cloud Build - Database Setup
+# This creates the brainspark database and runs schema migrations
+# Run with: gcloud builds submit --config=cloudbuild-setup-db.yaml
+
+steps:
+  # Step 1: Create database and run schema
+  - name: 'python:3.11'
+    id: 'setup-database'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install psycopg2-binary
+        python scripts/setup-database.py
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '600s'
