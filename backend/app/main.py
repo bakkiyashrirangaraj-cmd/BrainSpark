@@ -89,18 +89,29 @@ class ChildProfile(Base):
     topic_progress = relationship("TopicProgress", back_populates="child")
     conversations = relationship("Conversation", back_populates="child")
 
+class Topic(Base):
+    __tablename__ = "topics"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, unique=True, nullable=False)
+    icon = Column(String)
+    description = Column(String)
+    gradient = Column(String)
+    hook = Column(String)
+    min_level = Column(Integer, default=1)
+
 class TopicProgress(Base):
     __tablename__ = "topic_progress"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     child_id = Column(String, ForeignKey("child_profiles.id"))
-    topic = Column(String, nullable=False)  # Space, Physics, Nature, etc.
+    topic_id = Column(String, ForeignKey("topics.id"), nullable=False)
     level = Column(Integer, default=1)
     questions_asked = Column(Integer, default=0)
     max_depth_reached = Column(Integer, default=0)
     unlocked = Column(Boolean, default=False)
     last_visited = Column(DateTime, default=datetime.utcnow)
-    
+
     child = relationship("ChildProfile", back_populates="topic_progress")
 
 class Conversation(Base):
@@ -470,13 +481,13 @@ async def create_child(
         avatar=child_data.avatar
     )
     db.add(profile)
-    
-    # Initialize default topics
-    default_topics = ["Space", "Physics", "Nature", "Math"]
-    for topic in default_topics:
-        tp = TopicProgress(child_id=profile.id, topic=topic, unlocked=True)
+
+    # Initialize default topics - get all topics from database
+    topics = db.query(Topic).all()
+    for topic in topics:
+        tp = TopicProgress(child_id=profile.id, topic_id=topic.id, unlocked=True)
         db.add(tp)
-    
+
     db.commit()
 
     # Generate token for child (for testing/development)
