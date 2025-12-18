@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { authApi, childrenApi, chatApi } from '../api/client';
+import { authApi, childrenApi, chatApi, progressApi, streakApi, achievementsApi } from '../api/client';
 import { Mascot } from './Mascots';
 import { KnowledgeConstellation } from './KnowledgeConstellation';
 import confetti from 'canvas-confetti';
@@ -85,20 +85,10 @@ export default function FullApp() {
     }
   }, []);
 
-  // Initialize user progress when child is selected
+  // Initialize user progress when child is selected - LOAD FROM BACKEND
   useEffect(() => {
     if (selectedChild) {
-      // Initialize progress from child profile or default to unlocking first 3 nodes
-      const initialProgress = {};
-      knowledgeNodes.forEach(node => {
-        initialProgress[node.id] = {
-          unlocked: node.id <= 3, // First 3 nodes unlocked by default
-          depth: 0
-        };
-      });
-      setUserProgress(initialProgress);
-
-      // Set age group and streak from child profile
+      // Set age group from child profile
       if (selectedChild.profile) {
         const ageMapping = {
           'cubs': 'wonder_cubs',
@@ -106,8 +96,13 @@ export default function FullApp() {
           'masters': 'mind_masters'
         };
         setAgeGroup(ageMapping[selectedChild.profile.age_group] || 'curious_explorers');
-        setStreak(selectedChild.profile.streak || 0);
       }
+
+      // Load progress from backend (includes progress, streak, stars, achievements)
+      loadProgressFromBackend();
+
+      // Check in for daily streak
+      checkInStreak();
     }
   }, [selectedChild]);
 
@@ -117,6 +112,88 @@ export default function FullApp() {
       setChildren(response.data);
     } catch (err) {
       console.error('Failed to load children:', err);
+    }
+  };
+
+  // Load progress from backend when child is selected
+  const loadProgressFromBackend = async () => {
+    if (!selectedChild) return;
+
+    try {
+      const response = await progressApi.get(selectedChild.id);
+      const backendProgress = response.data.progress || {};
+
+      // Convert backend progress to frontend format
+      const progress = {};
+      knowledgeNodes.forEach(node => {
+        const nodeIdStr = node.id.toString();
+        if (backendProgress[nodeIdStr]) {
+          progress[node.id] = {
+            unlocked: backendProgress[nodeIdStr].unlocked,
+            depth: backendProgress[nodeIdStr].depth || 0
+          };
+        } else {
+          // Default: first 3 nodes unlocked
+          progress[node.id] = {
+            unlocked: node.id <= 3,
+            depth: 0
+          };
+        }
+      });
+
+      setUserProgress(progress);
+      setStreak(response.data.streak || 0);
+      setStars(response.data.stars || 0);
+
+      // Load achievements if available
+      if (response.data.achievements && response.data.achievements.length > 0) {
+        // Note: Backend achievements are stored, frontend shows temporary notifications
+        // We'll just track the count for now
+        setAhaCount(response.data.achievements.filter(a => a.includes('aha')).length);
+      }
+    } catch (err) {
+      console.error('Failed to load progress from backend:', err);
+      // Fall back to default initialization
+      const initialProgress = {};
+      knowledgeNodes.forEach(node => {
+        initialProgress[node.id] = {
+          unlocked: node.id <= 3,
+          depth: 0
+        };
+      });
+      setUserProgress(initialProgress);
+    }
+  };
+
+  // Check in streak when child logs in
+  const checkInStreak = async () => {
+    if (!selectedChild) return;
+
+    try {
+      const response = await streakApi.checkIn(selectedChild.id);
+      const newStreak = response.data.new_streak;
+      const bonusStars = response.data.bonus_stars || 0;
+
+      setStreak(newStreak);
+
+      // Show celebration if they got bonus stars
+      if (bonusStars > 0) {
+        setStars(prev => prev + bonusStars);
+        triggerCelebration('star');
+        playSound('star');
+
+        // Show streak bonus notification
+        const streakAchievement = {
+          icon: '🔥',
+          name: `${newStreak} Day Streak! +${bonusStars} ⭐`
+        };
+        setAchievements(prev => [...prev, streakAchievement]);
+        setTimeout(() => {
+          setAchievements(prev => prev.filter(a => a !== streakAchievement));
+        }, 5000);
+      }
+    } catch (err) {
+      console.error('Failed to check in streak:', err);
     }
   };
 
@@ -714,30 +791,53 @@ export default function FullApp() {
     return false;
   };
 
-  // Trigger Aha moment celebration
-  const triggerAhaMoment = () => {
+  // Trigger Aha moment celebration - WITH BACKEND SYNC
+  const triggerAhaMoment = async () => {
     playSound('aha');
     triggerCelebration('achievement');
     setAhaCount(prev => prev + 1);
 
     // Add achievement if this is their first, 5th, or 10th Aha moment
     const nextCount = ahaCount + 1;
+    let achievementId = null;
+    let starBonus = 0;
+    let achievementName = '';
+    let achievementIcon = '';
+
     if (nextCount === 1) {
-      const newAchievement = { icon: '💡', name: 'First Aha Moment!' };
-      setAchievements(prev => [...prev, newAchievement]);
-      // Auto-clear after 5 seconds
-      setTimeout(() => {
-        setAchievements(prev => prev.filter(a => a !== newAchievement));
-      }, 5000);
+      achievementId = 'first_aha';
+      starBonus = 10;
+      achievementIcon = '💡';
+      achievementName = 'First Aha Moment!';
     } else if (nextCount === 5) {
-      const newAchievement = { icon: '🌟', name: 'Insight Master!' };
-      setAchievements(prev => [...prev, newAchievement]);
-      setTimeout(() => {
-        setAchievements(prev => prev.filter(a => a !== newAchievement));
-      }, 5000);
+      achievementId = 'insight_master';
+      starBonus = 25;
+      achievementIcon = '🌟';
+      achievementName = 'Insight Master!';
     } else if (nextCount === 10) {
-      const newAchievement = { icon: '🎓', name: 'Genius Thinker!' };
+      achievementId = 'genius_thinker';
+      starBonus = 50;
+      achievementIcon = '🎓';
+      achievementName = 'Genius Thinker!';
+    }
+
+    if (achievementId) {
+      const newAchievement = { icon: achievementIcon, name: achievementName };
       setAchievements(prev => [...prev, newAchievement]);
+
+      // Save to backend
+      try {
+        await achievementsApi.unlock(selectedChild.id, {
+          achievement_id: achievementId,
+          star_bonus: starBonus
+        });
+        // Update stars with bonus
+        setStars(prev => prev + starBonus);
+      } catch (err) {
+        console.error('Failed to unlock achievement in backend:', err);
+      }
+
+      // Auto-clear after 5 seconds
       setTimeout(() => {
         setAchievements(prev => prev.filter(a => a !== newAchievement));
       }, 5000);
@@ -821,6 +921,18 @@ export default function FullApp() {
               depth: newDepth
             }
           }));
+
+          // Save progress to backend
+          try {
+            await progressApi.update(selectedChild.id, {
+              topic_id: currentNode.id.toString(),
+              depth: newDepth,
+              questions_asked: 1
+            });
+          } catch (saveErr) {
+            console.error('Failed to save progress to backend:', saveErr);
+            // Continue even if save fails - user experience isn't interrupted
+          }
 
           // Unlock new topics at depth milestones (every 5 levels)
           if (newDepth % 5 === 0 && newDepth > 0) {

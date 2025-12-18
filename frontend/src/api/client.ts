@@ -78,6 +78,26 @@ export const topicsApi = {
   getProgress: (childId: string) => apiClient.get(`/progress/${childId}`),
 }
 
+// Progress API - Knowledge Constellation tracking
+export const progressApi = {
+  get: (childId: string) => apiClient.get(`/progress/${childId}`),
+  update: (childId: string, data: { topic_id: string; depth: number; questions_asked: number }) =>
+    apiClient.post(`/progress/${childId}/update`, data),
+}
+
+// Streak API - Daily login tracking
+export const streakApi = {
+  get: (childId: string) => apiClient.get(`/streak/${childId}`),
+  checkIn: (childId: string) => apiClient.post(`/streak/${childId}/check-in`),
+}
+
+// Achievements API - Badge unlocking
+export const achievementsApi = {
+  get: (childId: string) => apiClient.get(`/achievements/${childId}`),
+  unlock: (childId: string, data: { achievement_id: string; star_bonus?: number }) =>
+    apiClient.post(`/achievements/${childId}/unlock`, data),
+}
+
 // Brain Spark API (Daily Questions)
 export const brainSparkApi = {
   getDaily: (ageGroup: string) => apiClient.get(`/brain-spark/daily?age_group=${ageGroup}`),
