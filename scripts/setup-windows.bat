@@ -50,24 +50,53 @@ if !errorlevel! neq 0 (
     for /f "tokens=*" %%i in ('npm --version 2^>nul') do echo [OK] npm: %%i
 )
 
-REM Check Python
-where python >nul 2>&1
-if !errorlevel! neq 0 (
+REM Check Python - try 'py' launcher first (standard on Windows), then 'python'
+set "PYTHON_CMD="
+set "PYTHON_FOUND="
+
+REM Try Python Launcher (py) first - this is the standard on Windows
+where py >nul 2>&1
+if !errorlevel! equ 0 (
+    py --version >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "PYTHON_CMD=py"
+        set "PYTHON_FOUND=1"
+        for /f "tokens=*" %%i in ('py --version 2^>nul') do echo [OK] %%i ^(using 'py' launcher^)
+    )
+)
+
+REM If py not found, try python
+if not defined PYTHON_FOUND (
+    where python >nul 2>&1
+    if !errorlevel! equ 0 (
+        REM Check if it's the Microsoft Store stub (returns error when run)
+        python --version >nul 2>&1
+        if !errorlevel! equ 0 (
+            set "PYTHON_CMD=python"
+            set "PYTHON_FOUND=1"
+            for /f "tokens=*" %%i in ('python --version 2^>nul') do echo [OK] %%i
+        )
+    )
+)
+
+if not defined PYTHON_FOUND (
     echo [X] Python not found!
     echo     Download from: https://www.python.org/downloads/
     echo     Or run: winget install Python.Python.3.11
+    echo     IMPORTANT: During installation, check "Add Python to PATH"
     set "MISSING_DEPS=1"
-) else (
-    for /f "tokens=*" %%i in ('python --version 2^>nul') do echo [OK] %%i
 )
 
-REM Check pip
-python -m pip --version >nul 2>&1
-if !errorlevel! neq 0 (
-    echo [X] pip not found!
-    set "MISSING_DEPS=1"
-) else (
-    echo [OK] pip installed
+REM Check pip (only if Python was found)
+if defined PYTHON_FOUND (
+    %PYTHON_CMD% -m pip --version >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [X] pip not found!
+        echo     Try running: %PYTHON_CMD% -m ensurepip --upgrade
+        set "MISSING_DEPS=1"
+    ) else (
+        for /f "tokens=2 delims= " %%i in ('%PYTHON_CMD% -m pip --version 2^>nul') do echo [OK] pip: %%i
+    )
 )
 
 REM Check Docker (optional)
@@ -161,7 +190,7 @@ if !errorlevel! neq 0 (
 REM Create virtual environment if not exists
 if not exist "venv" (
     echo Creating Python virtual environment...
-    python -m venv venv
+    %PYTHON_CMD% -m venv venv
     if !errorlevel! neq 0 (
         echo [X] Failed to create virtual environment!
         pause
@@ -173,7 +202,7 @@ REM Check venv activation script exists
 if not exist "venv\Scripts\activate.bat" (
     echo [X] Virtual environment is corrupted. Recreating...
     rmdir /s /q venv 2>nul
-    python -m venv venv
+    %PYTHON_CMD% -m venv venv
     if !errorlevel! neq 0 (
         echo [X] Failed to create virtual environment!
         pause
@@ -184,8 +213,8 @@ if not exist "venv\Scripts\activate.bat" (
 REM Activate virtual environment and install dependencies
 echo Installing Python packages...
 call venv\Scripts\activate.bat
-python -m pip install --upgrade pip -q 2>nul
-pip install -r requirements.txt -q
+venv\Scripts\python.exe -m pip install --upgrade pip -q 2>nul
+venv\Scripts\pip.exe install -r requirements.txt -q
 if !errorlevel! neq 0 (
     echo [X] Failed to install backend dependencies!
     echo     Check requirements.txt for any issues.
@@ -230,8 +259,8 @@ echo.
 cd /d "%PROJECT_ROOT%\backend"
 call venv\Scripts\activate.bat
 
-REM Create database tables using Python
-python -c "from app.main import Base, engine; Base.metadata.create_all(bind=engine)" 2>nul
+REM Create database tables using Python (use venv's python directly)
+venv\Scripts\python.exe -c "from app.main import Base, engine; Base.metadata.create_all(bind=engine)" 2>nul
 if !errorlevel! neq 0 (
     echo [!] Database initialization skipped [will auto-create on first run]
 ) else (
